@@ -14,6 +14,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
+COPY migrations ./migrations
 RUN mkdir -p /app/data /app/sessions/baileys
 VOLUME ["/app/data", "/app/sessions"]
 CMD ["npm", "run", "start"]

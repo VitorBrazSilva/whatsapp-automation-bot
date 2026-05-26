@@ -12,6 +12,7 @@ coverage/
 *.sqlite3
 data/
 logs/
+membros.json
 sessions/
 auth/
 baileys_auth/
