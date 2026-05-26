@@ -19,5 +19,10 @@ export interface DeliveryAttempt extends DeliveryAttemptInput {
 
 export interface DeliveryRepository {
   hasSuccessfulDelivery(personId: string, groupId: string, birthdayYear: number): Promise<boolean>;
+  findSuccessfulMessagesByPerson(
+    personId: string,
+    groupId: string,
+    limit: number
+  ): Promise<string[]>;
   recordAttempt(input: DeliveryAttemptInput): Promise<DeliveryAttempt>;
 }

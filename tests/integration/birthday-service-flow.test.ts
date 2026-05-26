@@ -1,8 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { openSqliteDatabase, runMigrations, type SqliteDatabase } from "../../src/database/index.js";
+import {
+  openSqliteDatabase,
+  runMigrations,
+  type SqliteDatabase
+} from "../../src/database/index.js";
 import { DefaultBirthdayService } from "../../src/domain/index.js";
 import type { Person } from "../../src/domain/index.js";
-import type { MessageGenerator, SendResult, WhatsAppClient } from "../../src/integrations/index.js";
+import {
+  OpenAiMessageGenerator,
+  type MessageGenerator,
+  type OpenAiCreateResponseRequest,
+  type OpenAiCreateResponseResult,
+  type OpenAiResponsesClient,
+  type SendResult,
+  type WhatsAppClient
+} from "../../src/integrations/index.js";
 import {
   SqliteBirthdayCheckRepository,
   SqliteDeliveryRepository,
@@ -74,9 +86,75 @@ describe("BirthdayService integration flow", () => {
     ]);
     database.close();
   });
+
+  it("runs the BirthdayService flow with the OpenAI generator and a mocked client", async () => {
+    const database = await createMigratedDatabase();
+    const people = new SqlitePersonRepository(database, fixedClock);
+    const checks = new SqliteBirthdayCheckRepository(database, fixedClock);
+    const deliveries = new SqliteDeliveryRepository(database, fixedClock);
+    await people.create({
+      id: "person-1",
+      name: "Ana",
+      birthDate: "1990-05-26"
+    });
+    await checks.startCheck({
+      id: "history-check",
+      checkDate: "2025-05-26",
+      timezone,
+      trigger: "manual"
+    });
+    await deliveries.recordAttempt({
+      personId: "person-1",
+      groupId,
+      birthdayYear: 2025,
+      checkId: "history-check",
+      messageText: "Mensagem enviada no ano passado.",
+      status: "sent",
+      providerMessageId: "provider-history",
+      errorCode: null,
+      errorMessage: null
+    });
+
+    const openAi = new FakeOpenAiClient({
+      output_text: JSON.stringify({ message: "Feliz aniversario, Ana! Que seja um dia lindo." })
+    });
+    const whatsapp = new FakeWhatsAppClient();
+    const service = new DefaultBirthdayService({
+      timezone,
+      groupId,
+      personRepository: people,
+      birthdayCheckRepository: checks,
+      deliveryRepository: deliveries,
+      messageGenerator: new OpenAiMessageGenerator({
+        model: "gpt-4.1-mini",
+        timeoutMs: 100,
+        client: openAi
+      }),
+      whatsappClient: whatsapp
+    });
+
+    const result = await service.runDailyCheck({ trigger: "scheduled", now: checkNow });
+
+    expect(result).toMatchObject({
+      birthdaysFound: 1,
+      deliveriesSent: 1,
+      failures: 0
+    });
+    expect(whatsapp.sentMessages).toEqual([
+      { groupId, text: "Feliz aniversario, Ana! Que seja um dia lindo." }
+    ]);
+    const payload = JSON.parse(openAi.requests[0]?.input[0]?.content[0]?.text ?? "{}") as {
+      priorMessages: string[];
+    };
+    expect(payload.priorMessages).toEqual(["Mensagem enviada no ano passado."]);
+    database.close();
+  });
 });
 
-function createService(database: SqliteDatabase, whatsappClient: WhatsAppClient): DefaultBirthdayService {
+function createService(
+  database: SqliteDatabase,
+  whatsappClient: WhatsAppClient
+): DefaultBirthdayService {
   return new DefaultBirthdayService({
     timezone,
     groupId,
@@ -92,7 +170,9 @@ class FakeMessageGenerator implements MessageGenerator {
   async generate(input: { person: Person }) {
     return {
       message: `Parabens, ${input.person.name}!`,
-      provider: "fallback" as const
+      provider: "fallback" as const,
+      model: null,
+      fallbackReason: null
     };
   }
 }
@@ -121,6 +201,21 @@ class DelayedWhatsAppClient extends FakeWhatsAppClient {
   override async sendGroupMessage(groupIdValue: string, text: string): Promise<SendResult> {
     await new Promise((resolve) => setTimeout(resolve, 10));
     return super.sendGroupMessage(groupIdValue, text);
+  }
+}
+
+class FakeOpenAiClient implements OpenAiResponsesClient {
+  readonly requests: OpenAiCreateResponseRequest[] = [];
+
+  constructor(private readonly response: OpenAiCreateResponseResult) {}
+
+  async createResponse(
+    input: OpenAiCreateResponseRequest,
+    signal: AbortSignal
+  ): Promise<OpenAiCreateResponseResult> {
+    void signal;
+    this.requests.push(input);
+    return this.response;
   }
 }
 

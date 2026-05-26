@@ -134,6 +134,9 @@ describe("SQLite repositories", () => {
       providerMessageId: "provider-1"
     });
     await expect(
+      deliveries.findSuccessfulMessagesByPerson("person-1", "family-group@g.us", 5)
+    ).resolves.toEqual(["Parabens, Ana!"]);
+    await expect(
       deliveries.hasSuccessfulDelivery("person-1", "family-group@g.us", 2026)
     ).resolves.toBe(true);
 

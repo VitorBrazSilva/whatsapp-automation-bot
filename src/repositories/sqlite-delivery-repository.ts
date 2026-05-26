@@ -42,6 +42,26 @@ export class SqliteDeliveryRepository implements DeliveryRepository {
     return row !== null;
   }
 
+  async findSuccessfulMessagesByPerson(
+    personId: string,
+    groupId: string,
+    limit: number
+  ): Promise<string[]> {
+    const rows = this.database.all(
+      `
+        SELECT message_text
+        FROM delivery_attempts
+        WHERE person_id = ?
+          AND group_id = ?
+          AND status = 'sent'
+        ORDER BY birthday_year DESC, created_at DESC
+        LIMIT ?
+      `,
+      [personId, groupId, limit]
+    );
+    return rows.map((row) => readText(row.message_text));
+  }
+
   async recordAttempt(input: DeliveryAttemptInput): Promise<DeliveryAttempt> {
     const id = randomUUID();
     const createdAt = this.now();
