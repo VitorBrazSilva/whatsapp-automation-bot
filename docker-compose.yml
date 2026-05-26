@@ -1,0 +1,18 @@
+services:
+  birthday-whatsapp-bot:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      DATABASE_PATH: /app/data/birthday-bot.sqlite
+      WHATSAPP_AUTH_DIR: /app/sessions/baileys
+    volumes:
+      - birthday-bot-data:/app/data
+      - birthday-bot-sessions:/app/sessions
+
+volumes:
+  birthday-bot-data:
+  birthday-bot-sessions:

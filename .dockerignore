@@ -1,0 +1,17 @@
+node_modules
+dist
+coverage
+.env
+.env.*
+!.env.example
+data
+logs
+sessions
+auth
+baileys_auth
+baileys-session
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+npm-debug.log*

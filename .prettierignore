@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+
+*.md
+data/
+logs/
+sessions/
+auth/
+baileys_auth/
+baileys-session/

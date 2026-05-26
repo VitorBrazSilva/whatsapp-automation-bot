@@ -1,0 +1,38 @@
+{
+  "name": "birthday-whatsapp-bot",
+  "version": "1.0.0",
+  "description": "Personal WhatsApp birthday bot service.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -p tsconfig.json",
+    "check": "npm run lint && npm run build && npm test",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "check:today": "tsx src/cli/check-today.ts",
+    "list:groups": "tsx src/cli/list-groups.ts"
+  },
+  "keywords": [
+    "whatsapp",
+    "birthday",
+    "bot"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@types/node": "^20.11.30",
+    "eslint": "^9.39.4",
+    "prettier": "^3.8.3",
+    "tsx": "^4.22.3",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.2",
+    "vitest": "^3.2.4"
+  }
+}
