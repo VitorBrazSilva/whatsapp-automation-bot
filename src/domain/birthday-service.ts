@@ -145,15 +145,18 @@ export class DefaultBirthdayService implements BirthdayService {
   private async generateAndSendMessage(input: ProcessBirthdayInput): Promise<ProcessResult> {
     let messageText = "";
     try {
+      const priorMessages = await this.deliveryRepository.findSuccessfulMessagesByPerson(
+        input.person.id,
+        this.groupId,
+        5
+      );
       const generated = await this.messageGenerator.generate({
         person: input.person,
-        priorMessages: []
+        priorMessages,
+        birthdayYear: input.birthdayYear
       });
       messageText = generated.message;
-      const sendResult = await this.whatsappClient.sendGroupMessage(
-        this.groupId,
-        messageText
-      );
+      const sendResult = await this.whatsappClient.sendGroupMessage(this.groupId, messageText);
       await this.deliveryRepository.recordAttempt({
         personId: input.person.id,
         groupId: this.groupId,

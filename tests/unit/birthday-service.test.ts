@@ -125,6 +125,21 @@ describe("DefaultBirthdayService", () => {
     expect(context.whatsapp.sentMessages).toEqual([{ groupId, text: "Parabens, Bruno!" }]);
   });
 
+  it("passes prior successful messages to the generator", async () => {
+    const context = createServiceContext({
+      people: [createPerson("person-1", "Ana")],
+      priorMessagesByPerson: new Map([["person-1", ["Parabens antigo, Ana!"]]])
+    });
+
+    await context.service.runDailyCheck({
+      trigger: "manual",
+      now: localBirthdayNow
+    });
+
+    expect(context.generator.inputs[0]?.priorMessages).toEqual(["Parabens antigo, Ana!"]);
+    expect(context.generator.inputs[0]?.birthdayYear).toBe(2026);
+  });
+
   it("uses the recovery reason as the check trigger", async () => {
     const context = createServiceContext({ people: [] });
 
@@ -150,12 +165,16 @@ interface CreateContextInput {
   people: Person[];
   existingSuccessfulDeliveries?: string[];
   generatorFailures?: Set<string>;
+  priorMessagesByPerson?: Map<string, string[]>;
 }
 
 function createServiceContext(input: CreateContextInput): ServiceContext {
   const people = new FakePersonRepository(input.people);
   const checks = new FakeBirthdayCheckRepository();
-  const deliveries = new FakeDeliveryRepository(input.existingSuccessfulDeliveries ?? []);
+  const deliveries = new FakeDeliveryRepository(
+    input.existingSuccessfulDeliveries ?? [],
+    input.priorMessagesByPerson ?? new Map()
+  );
   const generator = new FakeMessageGenerator(input.generatorFailures ?? new Set());
   const whatsapp = new FakeWhatsAppClient();
   const service = new DefaultBirthdayService({
@@ -220,7 +239,10 @@ class FakeDeliveryRepository implements DeliveryRepository {
   readonly attempts: DeliveryAttemptInput[] = [];
   private readonly successfulDeliveries: Set<string>;
 
-  constructor(existingSuccessfulDeliveries: string[]) {
+  constructor(
+    existingSuccessfulDeliveries: string[],
+    private readonly priorMessagesByPerson: Map<string, string[]>
+  ) {
     this.successfulDeliveries = new Set(existingSuccessfulDeliveries);
   }
 
@@ -230,6 +252,10 @@ class FakeDeliveryRepository implements DeliveryRepository {
     birthdayYear: number
   ): Promise<boolean> {
     return this.successfulDeliveries.has(createKey(personId, groupIdValue, birthdayYear));
+  }
+
+  async findSuccessfulMessagesByPerson(personId: string): Promise<string[]> {
+    return this.priorMessagesByPerson.get(personId) ?? [];
   }
 
   async recordAttempt(input: DeliveryAttemptInput): Promise<DeliveryAttempt> {
@@ -247,17 +273,21 @@ class FakeDeliveryRepository implements DeliveryRepository {
 
 class FakeMessageGenerator implements MessageGenerator {
   calls = 0;
+  readonly inputs: Parameters<MessageGenerator["generate"]>[0][] = [];
 
   constructor(private readonly failures: Set<string>) {}
 
   async generate(input: Parameters<MessageGenerator["generate"]>[0]) {
     this.calls += 1;
+    this.inputs.push(input);
     if (this.failures.has(input.person.id)) {
       throw new Error("Message generation failed.");
     }
     return {
       message: `Parabens, ${input.person.name}!`,
-      provider: "fallback" as const
+      provider: "fallback" as const,
+      model: null,
+      fallbackReason: null
     };
   }
 }
