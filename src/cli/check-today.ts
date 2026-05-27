@@ -1,12 +1,14 @@
-import { createApp } from "../app.js";
+import { runCheckTodayCommand } from "./check-today-command.js";
 
-const app = createApp();
-
-console.log(
-  JSON.stringify({
-    event: "birthday.check_today.requested",
-    status: "not_implemented",
-    timezone: app.config.timezone,
-    dailyCheckTime: app.config.dailyCheckTime
-  })
-);
+try {
+  await runCheckTodayCommand();
+} catch (error) {
+  console.error(
+    JSON.stringify({
+      event: "birthday.check_today.failed",
+      errorCode: error instanceof Error ? error.name : "UNKNOWN_ERROR",
+      errorMessage: error instanceof Error ? error.message : "Unknown error."
+    })
+  );
+  process.exitCode = 1;
+}
