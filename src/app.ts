@@ -8,6 +8,15 @@ import {
   type WhatsAppClient
 } from "./integrations/index.js";
 import {
+  HttpMetricsServer,
+  InMemoryMetricsRegistry,
+  JsonLogger,
+  nullMetricsRegistry,
+  type MetricsRegistry,
+  type MetricsServer,
+  type StructuredLogger
+} from "./observability/index.js";
+import {
   SqliteBirthdayCheckRepository,
   SqliteDeliveryRepository,
   SqlitePersonRepository
@@ -31,6 +40,9 @@ export interface BirthdayBotRuntime extends AppRuntime {
   birthdayService: BirthdayService;
   whatsappClient: WhatsAppClient;
   scheduler: BirthdayScheduler;
+  logger: StructuredLogger;
+  metrics: MetricsRegistry;
+  metricsServer: MetricsServer | null;
   now(): Date;
   close(): Promise<void>;
 }
@@ -39,6 +51,9 @@ export interface CreateBirthdayBotRuntimeOptions extends CreateAppOptions {
   database?: SqliteDatabase;
   whatsappClient?: WhatsAppClient;
   messageGenerator?: MessageGenerator;
+  logger?: StructuredLogger;
+  metrics?: MetricsRegistry;
+  metricsServer?: MetricsServer | null;
   nowProvider?: () => Date;
   runDatabaseMigrations?: boolean;
 }
@@ -61,6 +76,14 @@ export async function createBirthdayBotRuntime(
   const app = createApp(options);
   const groupId = requireWhatsappGroupId(app.config);
   const nowProvider = options.nowProvider ?? (() => new Date());
+  const logger = options.logger ?? new JsonLogger();
+  const metrics =
+    options.metrics ??
+    (app.config.metrics.enabled ? new InMemoryMetricsRegistry() : nullMetricsRegistry);
+  const metricsServer =
+    options.metricsServer === undefined
+      ? createMetricsServer(app.config, metrics)
+      : options.metricsServer;
   const database =
     options.database ?? (await openSqliteDatabase({ path: app.config.databasePath }));
   if (options.runDatabaseMigrations ?? true) {
@@ -69,7 +92,9 @@ export async function createBirthdayBotRuntime(
   const whatsappClient =
     options.whatsappClient ??
     new BaileysWhatsAppClient({
-      authDir: app.config.whatsappAuthDir
+      authDir: app.config.whatsappAuthDir,
+      logger,
+      metrics
     });
   const messageGenerator =
     options.messageGenerator ??
@@ -85,13 +110,16 @@ export async function createBirthdayBotRuntime(
     birthdayCheckRepository: new SqliteBirthdayCheckRepository(database, nowProvider),
     deliveryRepository: new SqliteDeliveryRepository(database, nowProvider),
     messageGenerator,
-    whatsappClient
+    whatsappClient,
+    logger,
+    metrics
   });
   const scheduler = new DefaultBirthdayScheduler({
     service: birthdayService,
     timezone: app.config.timezone,
     dailyCheckTime: app.config.dailyCheckTime,
-    now: nowProvider
+    now: nowProvider,
+    logger
   });
 
   return {
@@ -100,14 +128,29 @@ export async function createBirthdayBotRuntime(
     birthdayService,
     whatsappClient,
     scheduler,
+    logger,
+    metrics,
+    metricsServer,
     now: nowProvider,
     async close() {
+      await metricsServer?.stop();
       await scheduler.stop();
       await closeWhatsAppClient(whatsappClient);
       await database.save();
       database.close();
     }
   };
+}
+
+function createMetricsServer(config: AppConfig, metrics: MetricsRegistry): MetricsServer | null {
+  if (!config.metrics.enabled) {
+    return null;
+  }
+  return new HttpMetricsServer({
+    registry: metrics,
+    host: config.metrics.host,
+    port: config.metrics.port
+  });
 }
 
 function requireWhatsappGroupId(config: AppConfig): string {

@@ -4,6 +4,7 @@ import {
   type CreateBirthdayBotRuntimeOptions
 } from "./app.js";
 import type { CheckResult } from "./domain/index.js";
+import { readErrorCode, readErrorMessage } from "./observability/index.js";
 
 export interface StartProcessOptions extends CreateBirthdayBotRuntimeOptions {
   installSignalHandlers?: boolean;
@@ -15,12 +16,20 @@ export async function startProcess(options: StartProcessOptions = {}): Promise<B
     requireOperationalConfig: options.requireOperationalConfig ?? true
   });
   try {
+    if (runtime.metricsServer !== null) {
+      await runtime.metricsServer.start();
+      runtime.logger.info({
+        event: "metrics.server.started",
+        host: runtime.config.metrics.host,
+        port: runtime.config.metrics.port
+      });
+    }
     runtime.whatsappClient.onReady(async () => {
       const result = await runtime.birthdayService.runRecoveryCheck({
         reason: "whatsapp-reconnect",
         now: runtime.now()
       });
-      logEvent("birthday.recovery.completed", result);
+      logEvent(runtime, "birthday.recovery.completed", result);
     });
 
     await runtime.whatsappClient.connect();
@@ -28,21 +37,20 @@ export async function startProcess(options: StartProcessOptions = {}): Promise<B
       reason: "startup",
       now: runtime.now()
     });
-    logEvent("birthday.startup_recovery.completed", startupRecovery);
+    logEvent(runtime, "birthday.startup_recovery.completed", startupRecovery);
     await runtime.scheduler.start();
 
-    console.log(
-      JSON.stringify({
-        event: "app.started",
-        status: runtime.status,
-        timezone: runtime.config.timezone,
-        dailyCheckTime: runtime.config.dailyCheckTime,
-        databaseConfigured: runtime.config.databasePath.length > 0,
-        whatsappAuthConfigured: runtime.config.whatsappAuthDir.length > 0,
-        whatsappGroupConfigured: runtime.config.whatsappGroupId !== null,
-        openAiConfigured: runtime.config.openAiApiKeyConfigured
-      })
-    );
+    runtime.logger.info({
+      event: "app.started",
+      status: runtime.status,
+      timezone: runtime.config.timezone,
+      dailyCheckTime: runtime.config.dailyCheckTime,
+      databaseConfigured: runtime.config.databasePath.length > 0,
+      whatsappAuthConfigured: runtime.config.whatsappAuthDir.length > 0,
+      whatsappGroupConfigured: runtime.config.whatsappGroupId !== null,
+      openAiConfigured: runtime.config.openAiApiKeyConfigured,
+      metricsEnabled: runtime.config.metrics.enabled
+    });
 
     if (options.installSignalHandlers ?? true) {
       installShutdownHandlers(runtime);
@@ -55,14 +63,12 @@ export async function startProcess(options: StartProcessOptions = {}): Promise<B
   }
 }
 
-function logEvent(event: string, result: CheckResult): void {
-  console.log(
-    JSON.stringify({
-      event,
-      ...result,
-      processedAt: result.processedAt.toISOString()
-    })
-  );
+function logEvent(runtime: BirthdayBotRuntime, event: string, result: CheckResult): void {
+  runtime.logger.info({
+    event,
+    ...result,
+    processedAt: result.processedAt.toISOString()
+  });
 }
 
 function installShutdownHandlers(runtime: BirthdayBotRuntime): void {
@@ -70,18 +76,16 @@ function installShutdownHandlers(runtime: BirthdayBotRuntime): void {
     void runtime
       .close()
       .then(() => {
-        console.log(JSON.stringify({ event: "app.stopped", signal }));
+        runtime.logger.info({ event: "app.stopped", signal });
         process.exit(0);
       })
       .catch((error: unknown) => {
-        console.error(
-          JSON.stringify({
-            event: "app.stop_failed",
-            signal,
-            errorCode: error instanceof Error ? error.name : "UNKNOWN_ERROR",
-            errorMessage: error instanceof Error ? error.message : "Unknown error."
-          })
-        );
+        runtime.logger.error({
+          event: "app.stop_failed",
+          signal,
+          errorCode: readErrorCode(error),
+          errorMessage: readErrorMessage(error)
+        });
         process.exit(1);
       });
   };

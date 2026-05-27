@@ -1,13 +1,14 @@
 import type { BirthdayService } from "../domain/index.js";
+import {
+  JsonLogger,
+  readErrorCode,
+  readErrorMessage,
+  type StructuredLogger
+} from "../observability/index.js";
 
 export interface BirthdayScheduler {
   start(): Promise<void>;
   stop(): Promise<void>;
-}
-
-export interface SchedulerLogger {
-  info(fields: Record<string, unknown>): void;
-  error(fields: Record<string, unknown>): void;
 }
 
 export interface DefaultBirthdaySchedulerOptions {
@@ -17,7 +18,7 @@ export interface DefaultBirthdaySchedulerOptions {
   now?: () => Date;
   setTimer?: (callback: () => void, delayMs: number) => TimerHandle;
   clearTimer?: (handle: TimerHandle) => void;
-  logger?: SchedulerLogger;
+  logger?: StructuredLogger;
 }
 
 export type TimerHandle = ReturnType<typeof setTimeout>;
@@ -39,7 +40,7 @@ export class DefaultBirthdayScheduler implements BirthdayScheduler {
   private readonly now: () => Date;
   private readonly setTimer: (callback: () => void, delayMs: number) => TimerHandle;
   private readonly clearTimer: (handle: TimerHandle) => void;
-  private readonly logger: SchedulerLogger;
+  private readonly logger: StructuredLogger;
   private timer: TimerHandle | null = null;
   private stopped = true;
 
@@ -211,25 +212,4 @@ function readDatePart(parts: Intl.DateTimeFormatPart[], type: string): number {
   return Number(value);
 }
 
-function readErrorCode(error: unknown): string {
-  if (error instanceof Error) {
-    return error.name;
-  }
-  return "UNKNOWN_ERROR";
-}
-
-function readErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Unknown error.";
-}
-
-const consoleJsonLogger: SchedulerLogger = {
-  info(fields) {
-    console.log(JSON.stringify({ level: "info", ...fields }));
-  },
-  error(fields) {
-    console.error(JSON.stringify({ level: "error", ...fields }));
-  }
-};
+const consoleJsonLogger = new JsonLogger();

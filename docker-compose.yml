@@ -9,9 +9,12 @@ services:
       NODE_ENV: production
       DATABASE_PATH: /app/data/birthday-bot.sqlite
       WHATSAPP_AUTH_DIR: /app/sessions/baileys
+      METRICS_HOST: 0.0.0.0
     volumes:
       - birthday-bot-data:/app/data
       - birthday-bot-sessions:/app/sessions
+    ports:
+      - "127.0.0.1:9464:9464"
 
 volumes:
   birthday-bot-data:

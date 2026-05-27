@@ -1,14 +1,15 @@
 import { startProcess } from "./process.js";
+import { JsonLogger, readErrorCode, readErrorMessage } from "./observability/index.js";
+
+const logger = new JsonLogger();
 
 try {
   await startProcess();
 } catch (error) {
-  console.error(
-    JSON.stringify({
-      event: "app.start_failed",
-      errorCode: error instanceof Error ? error.name : "UNKNOWN_ERROR",
-      errorMessage: error instanceof Error ? error.message : "Unknown error."
-    })
-  );
+  logger.error({
+    event: "app.start_failed",
+    errorCode: readErrorCode(error),
+    errorMessage: readErrorMessage(error)
+  });
   process.exitCode = 1;
 }

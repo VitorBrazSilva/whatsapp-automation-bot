@@ -4,6 +4,9 @@ export const DEFAULT_DATABASE_PATH = "data/birthday-bot.sqlite";
 export const DEFAULT_WHATSAPP_AUTH_DIR = "sessions/baileys";
 export const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
 export const DEFAULT_OPENAI_TIMEOUT_MS = 15000;
+export const DEFAULT_METRICS_ENABLED = false;
+export const DEFAULT_METRICS_HOST = "127.0.0.1";
+export const DEFAULT_METRICS_PORT = 9464;
 
 export type RuntimeEnvironment = "development" | "test" | "production";
 
@@ -27,6 +30,13 @@ export interface AppConfig {
   whatsappGroupId: string | null;
   openAi: OpenAiConfig;
   openAiApiKeyConfigured: boolean;
+  metrics: MetricsConfig;
+}
+
+export interface MetricsConfig {
+  enabled: boolean;
+  host: string;
+  port: number;
 }
 
 export interface LoadAppConfigOptions {
@@ -70,7 +80,12 @@ export function loadAppConfig(
         DEFAULT_OPENAI_TIMEOUT_MS
       )
     },
-    openAiApiKeyConfigured: openAiApiKey !== null
+    openAiApiKeyConfigured: openAiApiKey !== null,
+    metrics: {
+      enabled: readBoolean("METRICS_ENABLED", env.METRICS_ENABLED, DEFAULT_METRICS_ENABLED),
+      host: readRequiredText("METRICS_HOST", env.METRICS_HOST, DEFAULT_METRICS_HOST),
+      port: readPort("METRICS_PORT", env.METRICS_PORT, DEFAULT_METRICS_PORT)
+    }
   };
 }
 
@@ -142,6 +157,28 @@ function readPositiveInteger(name: string, value: string | undefined, fallback: 
     return numberValue;
   }
   throw new ConfigError(`${name} must be a positive integer.`);
+}
+
+function readPort(name: string, value: string | undefined, fallback: number): number {
+  const port = readPositiveInteger(name, value, fallback);
+  if (port <= 65535) {
+    return port;
+  }
+  throw new ConfigError(`${name} must be a valid TCP port.`);
+}
+
+function readBoolean(name: string, value: string | undefined, fallback: boolean): boolean {
+  const text = readOptionalValue(value);
+  if (text === null) {
+    return fallback;
+  }
+  if (text === "true" || text === "1") {
+    return true;
+  }
+  if (text === "false" || text === "0") {
+    return false;
+  }
+  throw new ConfigError(`${name} must be true or false.`);
 }
 
 function requireValue(name: string, value: string | null): void {

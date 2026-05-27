@@ -1,4 +1,12 @@
 import type { MessageGenerator, WhatsAppClient } from "../integrations/index.js";
+import {
+  nullLogger,
+  nullMetricsRegistry,
+  readErrorCode,
+  readErrorMessage,
+  type MetricsRegistry,
+  type StructuredLogger
+} from "../observability/index.js";
 import type {
   BirthdayCheckRepository,
   DeliveryRepository,
@@ -42,6 +50,8 @@ export interface CreateBirthdayServiceOptions {
   deliveryRepository: DeliveryRepository;
   messageGenerator: MessageGenerator;
   whatsappClient: WhatsAppClient;
+  logger?: StructuredLogger;
+  metrics?: MetricsRegistry;
 }
 
 interface LocalBirthdayDate {
@@ -72,6 +82,8 @@ export class DefaultBirthdayService implements BirthdayService {
   private readonly deliveryRepository: DeliveryRepository;
   private readonly messageGenerator: MessageGenerator;
   private readonly whatsappClient: WhatsAppClient;
+  private readonly logger: StructuredLogger;
+  private readonly metrics: MetricsRegistry;
   private readonly deliveryLocks = new Map<string, Promise<void>>();
 
   constructor(options: CreateBirthdayServiceOptions) {
@@ -82,6 +94,8 @@ export class DefaultBirthdayService implements BirthdayService {
     this.deliveryRepository = options.deliveryRepository;
     this.messageGenerator = options.messageGenerator;
     this.whatsappClient = options.whatsappClient;
+    this.logger = options.logger ?? nullLogger;
+    this.metrics = options.metrics ?? nullMetricsRegistry;
   }
 
   async runDailyCheck(input: CheckInput): Promise<CheckResult> {
@@ -100,6 +114,13 @@ export class DefaultBirthdayService implements BirthdayService {
       trigger,
       startedAt: now
     });
+    this.logger.info({
+      event: "birthday.check.started",
+      checkId: check.id,
+      checkDate: localDate.checkDate,
+      trigger,
+      timezone: this.timezone
+    });
     const counters = createCounters();
     try {
       const people = await this.personRepository.findBirthdaysByMonthDay(
@@ -107,6 +128,7 @@ export class DefaultBirthdayService implements BirthdayService {
         localDate.day
       );
       counters.birthdaysFound = people.length;
+      this.recordBirthdaysFound(check.id, people.length);
       for (const person of people) {
         const result = await this.processBirthday({
           person,
@@ -116,10 +138,12 @@ export class DefaultBirthdayService implements BirthdayService {
         applyProcessResult(counters, result);
       }
       await this.finishCheck(check.id, counters, "completed", now, null);
+      this.recordCompletedCheck(check.id, trigger, counters);
       return createCheckResult(trigger, now, counters);
     } catch (error) {
       counters.failures += 1;
       await this.finishCheck(check.id, counters, "failed", now, readErrorMessage(error));
+      this.recordFailedCheck(check.id, trigger, counters, error);
       return createCheckResult(trigger, now, counters);
     }
   }
@@ -137,6 +161,7 @@ export class DefaultBirthdayService implements BirthdayService {
     );
     if (hasSuccessfulDelivery) {
       await this.recordSkippedDelivery(input);
+      this.recordDeliverySkipped(input);
       return "skipped";
     }
     return this.generateAndSendMessage(input);
@@ -155,9 +180,10 @@ export class DefaultBirthdayService implements BirthdayService {
         priorMessages,
         birthdayYear: input.birthdayYear
       });
+      this.recordGeneratedMessage(input, generated.provider, generated.fallbackReason);
       messageText = generated.message;
       const sendResult = await this.whatsappClient.sendGroupMessage(this.groupId, messageText);
-      await this.deliveryRepository.recordAttempt({
+      const attempt = await this.deliveryRepository.recordAttempt({
         personId: input.person.id,
         groupId: this.groupId,
         birthdayYear: input.birthdayYear,
@@ -168,13 +194,16 @@ export class DefaultBirthdayService implements BirthdayService {
         errorCode: null,
         errorMessage: null
       });
+      this.recordDeliverySent(input, attempt.id, sendResult.providerMessageId);
       return "sent";
     } catch (error) {
       if (error instanceof DuplicateSuccessfulDeliveryError) {
         await this.recordSkippedDelivery(input);
+        this.recordDeliverySkipped(input);
         return "skipped";
       }
       await this.recordFailedDelivery(input, messageText, error);
+      this.recordDeliveryFailed(input, error);
       return "failed";
     }
   }
@@ -190,6 +219,103 @@ export class DefaultBirthdayService implements BirthdayService {
       providerMessageId: null,
       errorCode: "DUPLICATE_SUCCESSFUL_DELIVERY",
       errorMessage: null
+    });
+  }
+
+  private recordBirthdaysFound(checkId: string, count: number): void {
+    this.metrics.incrementCounter("birthday_birthdays_found_total", {}, count);
+    this.logger.info({
+      event: "birthday.check.birthdays_found",
+      checkId,
+      birthdaysFound: count
+    });
+  }
+
+  private recordCompletedCheck(
+    checkId: string,
+    trigger: CheckTrigger,
+    counters: CheckCounters
+  ): void {
+    this.metrics.incrementCounter("birthday_checks_total", { status: "completed" });
+    this.logger.info({
+      event: "birthday.check.completed",
+      checkId,
+      trigger,
+      ...counters
+    });
+  }
+
+  private recordFailedCheck(
+    checkId: string,
+    trigger: CheckTrigger,
+    counters: CheckCounters,
+    error: unknown
+  ): void {
+    this.metrics.incrementCounter("birthday_checks_total", { status: "failed" });
+    this.logger.error({
+      event: "birthday.check.failed",
+      checkId,
+      trigger,
+      errorCode: readErrorCode(error),
+      errorMessage: readErrorMessage(error),
+      ...counters
+    });
+  }
+
+  private recordGeneratedMessage(
+    input: ProcessBirthdayInput,
+    provider: string,
+    fallbackReason: string | null
+  ): void {
+    if (provider !== "fallback" || fallbackReason === null) {
+      return;
+    }
+    this.metrics.incrementCounter("birthday_message_generation_failures_total");
+    this.logger.warn({
+      event: "birthday.message_generation.fallback",
+      checkId: input.checkId,
+      personId: input.person.id,
+      birthdayYear: input.birthdayYear,
+      reason: fallbackReason
+    });
+  }
+
+  private recordDeliverySent(
+    input: ProcessBirthdayInput,
+    deliveryAttemptId: string,
+    providerMessageId: string | null
+  ): void {
+    this.metrics.incrementCounter("birthday_delivery_attempts_total", { status: "sent" });
+    this.logger.info({
+      event: "birthday.delivery.sent",
+      checkId: input.checkId,
+      deliveryAttemptId,
+      personId: input.person.id,
+      birthdayYear: input.birthdayYear,
+      providerMessageRecorded: providerMessageId !== null
+    });
+  }
+
+  private recordDeliverySkipped(input: ProcessBirthdayInput): void {
+    this.metrics.incrementCounter("birthday_delivery_attempts_total", { status: "skipped" });
+    this.metrics.incrementCounter("birthday_duplicate_skips_total");
+    this.logger.warn({
+      event: "birthday.delivery.duplicate_skipped",
+      checkId: input.checkId,
+      personId: input.person.id,
+      birthdayYear: input.birthdayYear
+    });
+  }
+
+  private recordDeliveryFailed(input: ProcessBirthdayInput, error: unknown): void {
+    this.metrics.incrementCounter("birthday_delivery_attempts_total", { status: "failed" });
+    this.logger.error({
+      event: "birthday.delivery.failed",
+      checkId: input.checkId,
+      personId: input.person.id,
+      birthdayYear: input.birthdayYear,
+      errorCode: readErrorCode(error),
+      errorMessage: readErrorMessage(error)
     });
   }
 
@@ -319,18 +445,4 @@ function readDatePart(parts: Intl.DateTimeFormatPart[], type: string): number {
 
 function padDatePart(value: number): string {
   return String(value).padStart(2, "0");
-}
-
-function readErrorCode(error: unknown): string {
-  if (error instanceof Error) {
-    return error.name;
-  }
-  return "UNKNOWN_ERROR";
-}
-
-function readErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Unknown error.";
 }

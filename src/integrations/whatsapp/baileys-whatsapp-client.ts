@@ -11,6 +11,14 @@ import makeWASocket, {
 import pino from "pino";
 import * as qrcode from "qrcode-terminal";
 import {
+  JsonLogger,
+  nullMetricsRegistry,
+  readErrorCode,
+  readErrorMessage,
+  type MetricsRegistry,
+  type StructuredLogger
+} from "../../observability/index.js";
+import {
   WhatsAppSendError,
   type SendResult,
   type WhatsAppClient,
@@ -38,11 +46,7 @@ export interface BaileysAuthStateResult {
   saveCreds(): Promise<void>;
 }
 
-export interface WhatsAppLogger {
-  info(fields: Record<string, unknown>): void;
-  warn(fields: Record<string, unknown>): void;
-  error(fields: Record<string, unknown>): void;
-}
+export type WhatsAppLogger = StructuredLogger;
 
 export interface BaileysWhatsAppClientOptions {
   authDir: string;
@@ -50,6 +54,7 @@ export interface BaileysWhatsAppClientOptions {
   authStateFactory?: (authDir: string) => Promise<BaileysAuthStateResult>;
   qrWriter?: (qr: string) => void;
   logger?: WhatsAppLogger;
+  metrics?: MetricsRegistry;
   now?: () => Date;
 }
 
@@ -61,6 +66,7 @@ export class BaileysWhatsAppClient implements WhatsAppClient, WhatsAppGroupListe
   private readonly authStateFactory: (authDir: string) => Promise<BaileysAuthStateResult>;
   private readonly qrWriter: (qr: string) => void;
   private readonly logger: WhatsAppLogger;
+  private readonly metrics: MetricsRegistry;
   private readonly now: () => Date;
   private readonly readyHandlers: ReadyHandler[] = [];
 
@@ -76,6 +82,7 @@ export class BaileysWhatsAppClient implements WhatsAppClient, WhatsAppGroupListe
     this.authStateFactory = options.authStateFactory ?? useMultiFileAuthState;
     this.qrWriter = options.qrWriter ?? writeQrToTerminal;
     this.logger = options.logger ?? consoleJsonLogger;
+    this.metrics = options.metrics ?? nullMetricsRegistry;
     this.now = options.now ?? (() => new Date());
   }
 
@@ -161,6 +168,7 @@ export class BaileysWhatsAppClient implements WhatsAppClient, WhatsAppGroupListe
 
   private async startSocket(): Promise<void> {
     this.status = "connecting";
+    this.recordConnectionState("connecting");
     await mkdir(this.authDir, { recursive: true });
     const { state, saveCreds } = await this.authStateFactory(this.authDir);
     const socket = this.socketFactory({
@@ -192,6 +200,7 @@ export class BaileysWhatsAppClient implements WhatsAppClient, WhatsAppGroupListe
     }
     if (update.connection === "open") {
       this.status = "ready";
+      this.recordConnectionState("ready");
       this.logger.info({ event: "whatsapp.connection.open" });
       this.resolveInitialReady?.();
       this.initialReadyPromise = null;
@@ -206,6 +215,7 @@ export class BaileysWhatsAppClient implements WhatsAppClient, WhatsAppGroupListe
     if (statusCode === DisconnectReason.loggedOut) {
       this.status = "logged_out";
       this.socket = null;
+      this.recordConnectionState("logged_out");
       const error = new WhatsAppSendError(
         "WHATSAPP_LOGGED_OUT",
         "WhatsApp session logged out. Clear the session directory and pair again."
@@ -221,6 +231,7 @@ export class BaileysWhatsAppClient implements WhatsAppClient, WhatsAppGroupListe
     }
     this.status = "closed";
     this.socket = null;
+    this.recordConnectionState("closed");
     this.logger.warn({
       event: "whatsapp.connection.closed",
       reason: "reconnect",
@@ -254,6 +265,10 @@ export class BaileysWhatsAppClient implements WhatsAppClient, WhatsAppGroupListe
     this.resolveInitialReady = null;
     this.rejectInitialReady = null;
   }
+
+  private recordConnectionState(status: ConnectionStatus): void {
+    this.metrics.setGauge("whatsapp_connection_state", readConnectionStateValue(status));
+  }
 }
 
 function createDefaultSocket(config: UserFacingSocketConfig): BaileysSocketLike {
@@ -282,31 +297,17 @@ function readDisconnectStatusCode(update: ConnectionUpdate): number | undefined 
   return error?.output?.statusCode;
 }
 
-function readErrorCode(error: unknown): string {
-  if (error instanceof WhatsAppSendError) {
-    return error.code;
+function readConnectionStateValue(status: ConnectionStatus): number {
+  if (status === "ready") {
+    return 1;
   }
-  if (error instanceof Error) {
-    return error.name;
+  if (status === "connecting") {
+    return 0.5;
   }
-  return "UNKNOWN_ERROR";
+  if (status === "logged_out") {
+    return -1;
+  }
+  return 0;
 }
 
-function readErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Unknown error.";
-}
-
-const consoleJsonLogger: WhatsAppLogger = {
-  info(fields) {
-    console.log(JSON.stringify({ level: "info", ...fields }));
-  },
-  warn(fields) {
-    console.warn(JSON.stringify({ level: "warn", ...fields }));
-  },
-  error(fields) {
-    console.error(JSON.stringify({ level: "error", ...fields }));
-  }
-};
+const consoleJsonLogger = new JsonLogger();

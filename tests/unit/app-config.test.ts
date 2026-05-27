@@ -7,6 +7,9 @@ import {
   DEFAULT_OPENAI_TIMEOUT_MS,
   DEFAULT_TIMEZONE,
   DEFAULT_WHATSAPP_AUTH_DIR,
+  DEFAULT_METRICS_ENABLED,
+  DEFAULT_METRICS_HOST,
+  DEFAULT_METRICS_PORT,
   loadAppConfig
 } from "../../src/config/index.js";
 
@@ -26,7 +29,12 @@ describe("loadAppConfig", () => {
         model: DEFAULT_OPENAI_MODEL,
         timeoutMs: DEFAULT_OPENAI_TIMEOUT_MS
       },
-      openAiApiKeyConfigured: false
+      openAiApiKeyConfigured: false,
+      metrics: {
+        enabled: DEFAULT_METRICS_ENABLED,
+        host: DEFAULT_METRICS_HOST,
+        port: DEFAULT_METRICS_PORT
+      }
     });
   });
 
@@ -40,12 +48,20 @@ describe("loadAppConfig", () => {
       WHATSAPP_GROUP_ID: "family-group@g.us",
       OPENAI_API_KEY: "secret-key",
       OPENAI_MODEL: "gpt-4.1-mini",
-      OPENAI_TIMEOUT_MS: "5000"
+      OPENAI_TIMEOUT_MS: "5000",
+      METRICS_ENABLED: "true",
+      METRICS_HOST: "0.0.0.0",
+      METRICS_PORT: "9100"
     });
 
     expect(config.openAiApiKeyConfigured).toBe(true);
     expect(config.openAi.apiKey?.reveal()).toBe("secret-key");
     expect(config.openAi.timeoutMs).toBe(5000);
+    expect(config.metrics).toEqual({
+      enabled: true,
+      host: "0.0.0.0",
+      port: 9100
+    });
     expect(JSON.stringify(config)).not.toContain("secret-key");
   });
 
@@ -68,6 +84,16 @@ describe("loadAppConfig", () => {
         OPENAI_API_KEY: "secret-key"
       })
     ).toThrow(new ConfigError("OPENAI_TIMEOUT_MS must be a positive integer."));
+    expect(() =>
+      loadAppConfig({
+        METRICS_ENABLED: "yes"
+      })
+    ).toThrow(new ConfigError("METRICS_ENABLED must be true or false."));
+    expect(() =>
+      loadAppConfig({
+        METRICS_PORT: "70000"
+      })
+    ).toThrow(new ConfigError("METRICS_PORT must be a valid TCP port."));
   });
 
   it("requires operational secrets only for process startup", () => {
