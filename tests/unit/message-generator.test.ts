@@ -4,6 +4,7 @@ import {
   buildOpenAiBirthdayMessageRequest,
   createFallbackBirthdayMessage,
   OpenAiMessageGenerator,
+  OpenAiResponsesApiError,
   type OpenAiCreateResponseRequest,
   type OpenAiCreateResponseResult,
   type OpenAiResponsesClient,
@@ -84,7 +85,8 @@ describe("OpenAiMessageGenerator", () => {
       message: "Feliz aniversario, Ana! Que seu dia seja especial.",
       provider: "openai",
       model: "gpt-4.1-mini",
-      fallbackReason: null
+      fallbackReason: null,
+      fallbackDetails: null
     });
     expect(client.requests).toHaveLength(1);
     const payload = JSON.parse(client.requests[0]?.input[0]?.content[0]?.text ?? "{}") as {
@@ -131,6 +133,35 @@ describe("OpenAiMessageGenerator", () => {
     expect(result.provider).toBe("fallback");
     expect(result.fallbackReason).toBe("MESSAGE_REPEATS_PRIOR_MESSAGE");
     expect(result.message).not.toBe(repeatedMessage);
+  });
+
+  it("preserves OpenAI HTTP metadata when the request fails", async () => {
+    const client = new ThrowingOpenAiClient(
+      new OpenAiResponsesApiError({
+        status: 500,
+        statusText: "Internal Server Error",
+        requestId: "req-test-123",
+        responseBody: "{\"error\":\"boom\"}"
+      })
+    );
+    const generator = new OpenAiMessageGenerator({
+      model: "gpt-4.1-mini",
+      timeoutMs: 100,
+      client
+    });
+
+    const result = await generator.generate({
+      person: createPerson({ name: "Ana" }),
+      priorMessages: []
+    });
+
+    expect(result.provider).toBe("fallback");
+    expect(result.fallbackReason).toBe("OPENAI_HTTP_500");
+    expect(result.fallbackDetails).toEqual({
+      status: 500,
+      statusText: "Internal Server Error",
+      requestId: "req-test-123"
+    });
   });
 });
 
@@ -201,6 +232,14 @@ class NeverResolvingOpenAiClient implements OpenAiResponsesClient {
   ): Promise<OpenAiCreateResponseResult> {
     this.signal = signal;
     return new Promise(() => undefined);
+  }
+}
+
+class ThrowingOpenAiClient implements OpenAiResponsesClient {
+  constructor(private readonly error: Error) {}
+
+  async createResponse(): Promise<OpenAiCreateResponseResult> {
+    throw this.error;
   }
 }
 

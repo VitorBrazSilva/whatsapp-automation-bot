@@ -69,7 +69,8 @@ class FallbackMessageGenerator implements MessageGenerator {
       message: `Mensagem completa para ${input.person.name}`,
       provider: "fallback" as const,
       model: null,
-      fallbackReason: "OPENAI_ERROR"
+      fallbackReason: "OPENAI_ERROR",
+      fallbackDetails: null
     };
   }
 }

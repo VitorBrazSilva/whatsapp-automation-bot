@@ -11,6 +11,13 @@ export interface GeneratedMessage {
   provider: "openai" | "fallback";
   model: string | null;
   fallbackReason: string | null;
+  fallbackDetails: OpenAiFallbackDetails | null;
+}
+
+export interface OpenAiFallbackDetails {
+  status: number | null;
+  statusText: string | null;
+  requestId: string | null;
 }
 
 export interface MessageGenerator {
@@ -50,6 +57,27 @@ export interface OpenAiCreateResponseRequest {
 export interface OpenAiCreateResponseResult {
   output_text?: unknown;
   output?: unknown;
+}
+
+export class OpenAiResponsesApiError extends Error {
+  readonly status: number;
+  readonly statusText: string;
+  readonly requestId: string | null;
+  readonly responseBody: string;
+
+  constructor(options: {
+    status: number;
+    statusText: string;
+    requestId: string | null;
+    responseBody: string;
+  }) {
+    super(`OpenAI Responses API request failed with status ${options.status}.`);
+    this.name = "OpenAiResponsesApiError";
+    this.status = options.status;
+    this.statusText = options.statusText;
+    this.requestId = options.requestId;
+    this.responseBody = options.responseBody;
+  }
 }
 
 export interface OpenAiMessageGeneratorOptions {
@@ -141,19 +169,25 @@ export class OpenAiMessageGenerator implements MessageGenerator {
         message: validation.message,
         provider: "openai",
         model: this.model,
-        fallbackReason: null
+        fallbackReason: null,
+        fallbackDetails: null
       };
     } catch (error) {
-      return this.createFallbackMessage(input, readFallbackReason(error));
+      return this.createFallbackMessage(input, readFallbackReason(error), readFallbackDetails(error));
     }
   }
 
-  private createFallbackMessage(input: BirthdayMessageInput, reason: string): GeneratedMessage {
+  private createFallbackMessage(
+    input: BirthdayMessageInput,
+    reason: string,
+    fallbackDetails: OpenAiFallbackDetails | null = null
+  ): GeneratedMessage {
     return {
       message: createFallbackBirthdayMessage(input, this.maxMessageLength),
       provider: "fallback",
       model: null,
-      fallbackReason: reason
+      fallbackReason: reason,
+      fallbackDetails
     };
   }
 }
@@ -176,7 +210,12 @@ export class FetchOpenAiResponsesClient implements OpenAiResponsesClient {
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI Responses API request failed with status ${response.status}.`);
+      throw new OpenAiResponsesApiError({
+        status: response.status,
+        statusText: response.statusText,
+        requestId: readOpenAiRequestId(response),
+        responseBody: await readResponseBody(response)
+      });
     }
     return (await response.json()) as OpenAiCreateResponseResult;
   }
@@ -472,6 +511,9 @@ async function withTimeout<T>(
 }
 
 function readFallbackReason(error: unknown): string {
+  if (error instanceof OpenAiResponsesApiError) {
+    return `OPENAI_HTTP_${error.status}`;
+  }
   if (error instanceof Error) {
     if (error.message.toLowerCase().includes("timed out")) {
       return "OPENAI_TIMEOUT";
@@ -479,4 +521,32 @@ function readFallbackReason(error: unknown): string {
     return error.name === "Error" ? "OPENAI_ERROR" : error.name;
   }
   return "OPENAI_ERROR";
+}
+
+function readFallbackDetails(error: unknown): OpenAiFallbackDetails | null {
+  if (error instanceof OpenAiResponsesApiError) {
+    return {
+      status: error.status,
+      statusText: error.statusText || null,
+      requestId: error.requestId
+    };
+  }
+  return null;
+}
+
+function readOpenAiRequestId(response: Response): string | null {
+  return (
+    response.headers.get("x-request-id") ??
+    response.headers.get("request-id") ??
+    response.headers.get("openai-request-id") ??
+    null
+  );
+}
+
+async function readResponseBody(response: Response): Promise<string> {
+  try {
+    return await response.text();
+  } catch {
+    return "";
+  }
 }

@@ -180,7 +180,12 @@ export class DefaultBirthdayService implements BirthdayService {
         priorMessages,
         birthdayYear: input.birthdayYear
       });
-      this.recordGeneratedMessage(input, generated.provider, generated.fallbackReason);
+      this.recordGeneratedMessage(
+        input,
+        generated.provider,
+        generated.fallbackReason,
+        generated.fallbackDetails
+      );
       messageText = generated.message;
       const sendResult = await this.whatsappClient.sendGroupMessage(this.groupId, messageText);
       const attempt = await this.deliveryRepository.recordAttempt({
@@ -265,7 +270,8 @@ export class DefaultBirthdayService implements BirthdayService {
   private recordGeneratedMessage(
     input: ProcessBirthdayInput,
     provider: string,
-    fallbackReason: string | null
+    fallbackReason: string | null,
+    fallbackDetails: { status: number | null; statusText: string | null; requestId: string | null } | null
   ): void {
     if (provider !== "fallback" || fallbackReason === null) {
       return;
@@ -276,7 +282,10 @@ export class DefaultBirthdayService implements BirthdayService {
       checkId: input.checkId,
       personId: input.person.id,
       birthdayYear: input.birthdayYear,
-      reason: fallbackReason
+      reason: fallbackReason,
+      openAiStatus: fallbackDetails?.status ?? null,
+      openAiStatusText: fallbackDetails?.statusText ?? null,
+      openAiRequestId: fallbackDetails?.requestId ?? null
     });
   }
 

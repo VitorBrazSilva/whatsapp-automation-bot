@@ -142,7 +142,8 @@ class FakeMessageGenerator implements MessageGenerator {
       message: `Parabens, ${input.person.name}!`,
       provider: "fallback" as const,
       model: null,
-      fallbackReason: null
+      fallbackReason: null,
+      fallbackDetails: null
     };
   }
 }

@@ -9,7 +9,7 @@ import makeWASocket, {
   type WAMessage
 } from "baileys";
 import pino from "pino";
-import * as qrcode from "qrcode-terminal";
+import qrcode from "qrcode-terminal";
 import {
   JsonLogger,
   nullMetricsRegistry,
