@@ -87,6 +87,36 @@ describe("BirthdayService integration flow", () => {
     database.close();
   });
 
+  it("uses WhatsApp ready events for recovery without duplicate sends", async () => {
+    const database = await createMigratedDatabase();
+    const people = new SqlitePersonRepository(database, fixedClock);
+    await people.create({
+      id: "person-1",
+      name: "Ana",
+      birthDate: "1990-05-26"
+    });
+
+    const whatsapp = new FakeWhatsAppClient();
+    const service = createService(database, whatsapp);
+    const recoveryResults: unknown[] = [];
+    whatsapp.onReady(async () => {
+      recoveryResults.push(
+        await service.runRecoveryCheck({ reason: "whatsapp-reconnect", now: checkNow })
+      );
+    });
+
+    await whatsapp.emitReady();
+    await whatsapp.emitReady();
+
+    expect(whatsapp.sentMessages).toEqual([{ groupId, text: "Parabens, Ana!" }]);
+    expect(recoveryResults).toHaveLength(2);
+    expect(readAttempts(database)).toEqual([
+      { person_id: "person-1", status: "sent" },
+      { person_id: "person-1", status: "skipped" }
+    ]);
+    database.close();
+  });
+
   it("runs the BirthdayService flow with the OpenAI generator and a mocked client", async () => {
     const database = await createMigratedDatabase();
     const people = new SqlitePersonRepository(database, fixedClock);
@@ -179,6 +209,7 @@ class FakeMessageGenerator implements MessageGenerator {
 
 class FakeWhatsAppClient implements WhatsAppClient {
   readonly sentMessages: Array<{ groupId: string; text: string }> = [];
+  private readonly readyHandlers: Array<() => Promise<void>> = [];
 
   async connect(): Promise<void> {
     return undefined;
@@ -192,8 +223,14 @@ class FakeWhatsAppClient implements WhatsAppClient {
     };
   }
 
-  onReady(): void {
-    return undefined;
+  onReady(handler: () => Promise<void>): void {
+    this.readyHandlers.push(handler);
+  }
+
+  async emitReady(): Promise<void> {
+    for (const handler of this.readyHandlers) {
+      await handler();
+    }
   }
 }
 
