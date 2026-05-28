@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   ConfigError,
+  DEFAULT_APP_NAME,
   DEFAULT_DATABASE_PATH,
   DEFAULT_DAILY_CHECK_TIME,
+  DEFAULT_HTTP_HOST,
+  DEFAULT_HTTP_PORT,
   DEFAULT_OPENAI_MODEL,
   DEFAULT_OPENAI_TIMEOUT_MS,
+  DEFAULT_SCHEDULER_ENABLED,
   DEFAULT_TIMEZONE,
   DEFAULT_WHATSAPP_AUTH_DIR,
   DEFAULT_METRICS_ENABLED,
@@ -18,12 +22,18 @@ describe("loadAppConfig", () => {
     const config = loadAppConfig({});
 
     expect(config).toEqual({
+      appName: DEFAULT_APP_NAME,
       nodeEnv: "development",
       timezone: DEFAULT_TIMEZONE,
       dailyCheckTime: DEFAULT_DAILY_CHECK_TIME,
+      schedulerEnabled: DEFAULT_SCHEDULER_ENABLED,
       databasePath: DEFAULT_DATABASE_PATH,
       whatsappAuthDir: DEFAULT_WHATSAPP_AUTH_DIR,
       whatsappGroupId: null,
+      http: {
+        host: DEFAULT_HTTP_HOST,
+        port: DEFAULT_HTTP_PORT
+      },
       openAi: {
         apiKey: null,
         model: DEFAULT_OPENAI_MODEL,
@@ -49,6 +59,9 @@ describe("loadAppConfig", () => {
       OPENAI_API_KEY: "secret-key",
       OPENAI_MODEL: "gpt-4.1-mini",
       OPENAI_TIMEOUT_MS: "5000",
+      HTTP_HOST: "127.0.0.1",
+      HTTP_PORT: "3001",
+      SCHEDULER_ENABLED: "false",
       METRICS_ENABLED: "true",
       METRICS_HOST: "0.0.0.0",
       METRICS_PORT: "9100"
@@ -57,6 +70,11 @@ describe("loadAppConfig", () => {
     expect(config.openAiApiKeyConfigured).toBe(true);
     expect(config.openAi.apiKey?.reveal()).toBe("secret-key");
     expect(config.openAi.timeoutMs).toBe(5000);
+    expect(config.http).toEqual({
+      host: "127.0.0.1",
+      port: 3001
+    });
+    expect(config.schedulerEnabled).toBe(false);
     expect(config.metrics).toEqual({
       enabled: true,
       host: "0.0.0.0",

@@ -18,7 +18,7 @@ Você revisa tasks que foram concluídas usando o workflow `execute_task.md`. Se
 ## Processo de Review
 
 ### Passo 1: Identificar a Task
-- Procure por arquivos de task correspondendo ao padrão `*_task.md` no projeto (verifique locais comuns como `.claude/tasks/`, `tasks/`, `docs/tasks/`, ou a raiz do projeto)
+- Procure por arquivos de task correspondendo ao padrão `*_task.md` no projeto (verifique locais comuns como `.agents/tasks/`, `tasks/`, `docs/tasks/`, ou a raiz do projeto)
 - Se um número de task for fornecido, encontre o arquivo `[num]_task.md` específico
 - Se nenhum número de task for fornecido, encontre o arquivo de task mais recente
 - Leia e entenda os requisitos da task completamente

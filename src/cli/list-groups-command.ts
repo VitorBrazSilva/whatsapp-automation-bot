@@ -1,9 +1,7 @@
-import { loadAppConfig } from "../config/index.js";
-import {
-  BaileysWhatsAppClient,
-  type WhatsAppGroup,
-  type WhatsAppGroupLister
-} from "../integrations/index.js";
+import type { INestApplicationContext } from "@nestjs/common";
+import type { WhatsAppGroup, WhatsAppGroupLister } from "../integrations/index.js";
+import { WHATSAPP_CLIENT } from "../whatsapp/index.js";
+import { createCommandContext } from "./application-context.js";
 
 export interface GroupListWhatsAppClient extends WhatsAppGroupLister {
   connect(): Promise<void>;
@@ -11,8 +9,8 @@ export interface GroupListWhatsAppClient extends WhatsAppGroupLister {
 }
 
 export interface ListGroupsCommandOptions {
+  context?: INestApplicationContext;
   env?: NodeJS.ProcessEnv;
-  whatsappClient?: GroupListWhatsAppClient;
   stdout?: (line: string) => void;
 }
 
@@ -24,18 +22,23 @@ export async function runListGroupsCommand(
   options: ListGroupsCommandOptions = {}
 ): Promise<ListGroupsCommandResult> {
   const stdout = options.stdout ?? console.log;
-  const config = loadAppConfig(options.env);
-  const client =
-    options.whatsappClient ??
-    new BaileysWhatsAppClient({
-      authDir: config.whatsappAuthDir
-    });
+  const context =
+    options.context ??
+    (await createCommandContext({
+      env: options.env,
+      ensureLegacyTargets: false
+    }));
+  const ownsContext = options.context === undefined;
+  const client = context.get<GroupListWhatsAppClient>(WHATSAPP_CLIENT);
   try {
     await client.connect();
     const groups = await client.listGroups();
     stdout(JSON.stringify({ event: "whatsapp.list_groups.completed", groups }, null, 2));
     return { groups };
   } finally {
-    await client.close?.();
+    if (ownsContext) {
+      await client.close?.();
+      await context.close();
+    }
   }
 }

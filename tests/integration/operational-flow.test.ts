@@ -1,13 +1,15 @@
+import type { INestApplicationContext } from "@nestjs/common";
+import { Test } from "@nestjs/testing";
 import { describe, expect, it } from "vitest";
-import { createBirthdayBotRuntime } from "../../src/app.js";
+import { AppModule } from "../../src/app.module.js";
+import { BIRTHDAY_MESSAGE_GENERATOR } from "../../src/ai/index.js";
+import { BirthdayAutomationService } from "../../src/birthday-automation/index.js";
 import { runCheckTodayCommand } from "../../src/cli/check-today-command.js";
 import { runDbMigrateCommand } from "../../src/cli/db-migrate-command.js";
 import { runListGroupsCommand } from "../../src/cli/list-groups-command.js";
-import {
-  openSqliteDatabase,
-  runMigrations,
-  type SqliteDatabase
-} from "../../src/database/index.js";
+import { runTargetsAddCommand } from "../../src/cli/targets-add-command.js";
+import { runTargetsListCommand } from "../../src/cli/targets-list-command.js";
+import { DatabaseMigrationService } from "../../src/database/index.js";
 import type { Person } from "../../src/domain/index.js";
 import type {
   MessageGenerator,
@@ -15,8 +17,10 @@ import type {
   WhatsAppClient,
   WhatsAppGroup
 } from "../../src/integrations/index.js";
+import { TypeOrmPersonRepository } from "../../src/birthday-automation/index.js";
+import { TargetsService } from "../../src/targets/index.js";
+import { WHATSAPP_CLIENT } from "../../src/whatsapp/index.js";
 import { startProcess } from "../../src/process.js";
-import { SqlitePersonRepository } from "../../src/repositories/index.js";
 
 const now = new Date("2026-05-26T12:00:00.000Z");
 const groupId = "family-group@g.us";
@@ -27,70 +31,72 @@ const env = {
   DATABASE_PATH: ":memory:",
   WHATSAPP_AUTH_DIR: "unused-test-auth",
   WHATSAPP_GROUP_ID: groupId,
-  OPENAI_API_KEY: "test-key"
+  OPENAI_API_KEY: "test-key",
+  SCHEDULER_ENABLED: "false"
 };
 
 describe("operational flow", () => {
-  it("runs check:today manually with real repositories and fake providers", async () => {
-    const database = await createDatabaseWithBirthdayPerson();
+  it("runs the birthday automation through the Nest application context", async () => {
     const whatsapp = new FakeWhatsAppClient();
+    const context = await createTestContext(whatsapp);
+    await seedBirthdayPerson(context);
+    await context.get(TargetsService).ensureLegacyBirthdayTarget();
+    await context.get(TargetsService).addGroupTarget("birthdays.daily", "friends@g.us", "Friends");
+
+    const result = await context.get(BirthdayAutomationService).runToday("manual", now);
+
+    expect(result).toMatchObject({
+      itemsMatched: 1,
+      deliveriesSent: 2,
+      duplicateSkips: 0,
+      failures: 0
+    });
+    expect(whatsapp.sentMessages).toHaveLength(2);
+    expect(whatsapp.sentMessages).toEqual(
+      expect.arrayContaining([
+        { groupId, text: "Parabens, Ana!" },
+        { groupId: "friends@g.us", text: "Parabens, Ana!" }
+      ])
+    );
+    await context.close();
+  });
+
+  it("runs birthdays:check-today with fake providers", async () => {
+    const whatsapp = new FakeWhatsAppClient();
+    const context = await createTestContext(whatsapp);
     const output: string[] = [];
+    await seedBirthdayPerson(context);
+    await context.get(TargetsService).ensureLegacyBirthdayTarget();
 
     const command = await runCheckTodayCommand({
-      env,
-      database,
-      whatsappClient: whatsapp,
-      messageGenerator: new FakeMessageGenerator(),
-      runDatabaseMigrations: false,
-      nowProvider: () => now,
+      context,
+      now,
       stdout: (line) => output.push(line)
     });
 
     expect(command.result).toMatchObject({
-      trigger: "manual",
-      birthdaysFound: 1,
+      itemsMatched: 1,
       deliveriesSent: 1,
       duplicateSkips: 0,
       failures: 0
     });
     expect(whatsapp.connected).toBe(true);
-    expect(whatsapp.sentMessages).toEqual([{ groupId, text: "Parabens, Ana!" }]);
     expect(JSON.parse(output[0] ?? "{}")).toMatchObject({
-      event: "birthday.check_today.completed",
+      event: "birthdays.check_today.completed",
       trigger: "manual"
     });
-  });
-
-  it("wires startup and WhatsApp ready recovery through the operational process", async () => {
-    const database = await createDatabaseWithBirthdayPerson();
-    const whatsapp = new FakeWhatsAppClient();
-    const runtime = await startProcess({
-      env,
-      database,
-      whatsappClient: whatsapp,
-      messageGenerator: new FakeMessageGenerator(),
-      runDatabaseMigrations: false,
-      nowProvider: () => now,
-      installSignalHandlers: false
-    });
-
-    expect(whatsapp.sentMessages).toEqual([{ groupId, text: "Parabens, Ana!" }]);
-
-    await whatsapp.emitReady();
-
-    expect(whatsapp.sentMessages).toEqual([{ groupId, text: "Parabens, Ana!" }]);
-    await runtime.close();
+    await context.close();
   });
 
   it("lists groups with a fake WhatsApp client", async () => {
-    const output: string[] = [];
     const groups: WhatsAppGroup[] = [
       { id: "family@g.us", subject: "Familia", participantCount: 5 }
     ];
+    const context = await createTestContext(new FakeGroupClient(groups));
+    const output: string[] = [];
 
     const result = await runListGroupsCommand({
-      env,
-      whatsappClient: new FakeGroupClient(groups),
+      context,
       stdout: (line) => output.push(line)
     });
 
@@ -99,42 +105,111 @@ describe("operational flow", () => {
       event: "whatsapp.list_groups.completed",
       groups
     });
+    await context.close();
   });
 
-  it("runs db:migrate against an injected database", async () => {
-    const database = await openSqliteDatabase({ path: ":memory:" });
+  it("adds and lists targets through CLI commands", async () => {
+    const context = await createTestContext(new FakeWhatsAppClient());
+    const output: string[] = [];
+
+    await runTargetsAddCommand({
+      context,
+      args: ["birthdays.daily", "friends@g.us", "Friends"],
+      stdout: (line) => output.push(line)
+    });
+    const result = await runTargetsListCommand({
+      context,
+      args: ["birthdays.daily"],
+      stdout: (line) => output.push(line)
+    });
+
+    expect(result.targets).toHaveLength(1);
+    expect(result.targets[0]).toMatchObject({
+      automationKey: "birthdays.daily",
+      targetJid: "friends@g.us",
+      displayName: "Friends",
+      active: true
+    });
+    await context.close();
+  });
+
+  it("runs db:migrate through a Nest application context", async () => {
     const output: string[] = [];
 
     const result = await runDbMigrateCommand({
       env,
-      database,
       stdout: (line) => output.push(line)
     });
 
     expect(result.appliedCount).toBe(1);
-    expect(database.get("SELECT version FROM schema_migrations WHERE version = 1")).not.toBeNull();
     expect(JSON.parse(output[0] ?? "{}")).toEqual({
       event: "database.migrations.completed",
       appliedCount: 1
     });
-    database.close();
   });
 
-  it("can compose the operational runtime without starting network providers", async () => {
-    const database = await createDatabaseWithBirthdayPerson();
-    const runtime = await createBirthdayBotRuntime({
+  it("starts the Nest process without network providers when disabled", async () => {
+    const app = await startProcess({
       env,
-      database,
-      whatsappClient: new FakeWhatsAppClient(),
-      messageGenerator: new FakeMessageGenerator(),
-      runDatabaseMigrations: false,
-      nowProvider: () => now
+      connectWhatsapp: false,
+      listen: false,
+      installSignalHandlers: false
     });
 
-    expect(runtime.status).toBe("ready");
-    await runtime.close();
+    expect(app.getHttpServer()).toBeDefined();
+    await app.close();
   });
 });
+
+async function createTestContext(
+  whatsappClient: WhatsAppClient | FakeGroupClient
+): Promise<INestApplicationContext> {
+  const previousEnv = applyEnv(env);
+  try {
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule]
+    })
+      .overrideProvider(WHATSAPP_CLIENT)
+      .useValue(whatsappClient)
+      .overrideProvider(BIRTHDAY_MESSAGE_GENERATOR)
+      .useValue(new FakeMessageGenerator())
+      .compile();
+    await moduleRef.init();
+    await moduleRef.get(DatabaseMigrationService).runMigrations();
+    return moduleRef;
+  } finally {
+    restoreEnv(previousEnv);
+  }
+}
+
+async function seedBirthdayPerson(context: INestApplicationContext): Promise<void> {
+  await context.get(TypeOrmPersonRepository).create({
+    id: "person-1",
+    name: "Ana",
+    birthDate: "1990-05-26",
+    createdAt: now,
+    updatedAt: now
+  });
+}
+
+function applyEnv(values: NodeJS.ProcessEnv): Map<string, string | undefined> {
+  const previous = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(values)) {
+    previous.set(key, process.env[key]);
+    process.env[key] = value;
+  }
+  return previous;
+}
+
+function restoreEnv(previous: Map<string, string | undefined>): void {
+  for (const [key, value] of previous) {
+    if (value === undefined) {
+      delete process.env[key];
+      continue;
+    }
+    process.env[key] = value;
+  }
+}
 
 class FakeMessageGenerator implements MessageGenerator {
   async generate(input: { person: Person }) {
@@ -155,7 +230,6 @@ class FakeWhatsAppClient implements WhatsAppClient {
 
   async connect(): Promise<void> {
     this.connected = true;
-    await this.emitReady();
   }
 
   async sendGroupMessage(groupIdValue: string, text: string): Promise<SendResult> {
@@ -169,44 +243,14 @@ class FakeWhatsAppClient implements WhatsAppClient {
   onReady(handler: () => Promise<void>): void {
     this.readyHandlers.push(handler);
   }
-
-  async emitReady(): Promise<void> {
-    for (const handler of this.readyHandlers) {
-      await handler();
-    }
-  }
-
-  async close(): Promise<void> {
-    return undefined;
-  }
 }
 
-class FakeGroupClient {
-  connected = false;
-
-  constructor(private readonly groups: WhatsAppGroup[]) {}
-
-  async connect(): Promise<void> {
-    this.connected = true;
+class FakeGroupClient extends FakeWhatsAppClient {
+  constructor(private readonly groups: WhatsAppGroup[]) {
+    super();
   }
 
   async listGroups(): Promise<WhatsAppGroup[]> {
     return this.groups;
   }
-
-  async close(): Promise<void> {
-    return undefined;
-  }
-}
-
-async function createDatabaseWithBirthdayPerson(): Promise<SqliteDatabase> {
-  const database = await openSqliteDatabase({ path: ":memory:" });
-  await runMigrations(database);
-  const people = new SqlitePersonRepository(database, () => now);
-  await people.create({
-    id: "person-1",
-    name: "Ana",
-    birthDate: "1990-05-26"
-  });
-  return database;
 }

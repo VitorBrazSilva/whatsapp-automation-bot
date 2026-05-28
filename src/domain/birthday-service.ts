@@ -271,7 +271,11 @@ export class DefaultBirthdayService implements BirthdayService {
     input: ProcessBirthdayInput,
     provider: string,
     fallbackReason: string | null,
-    fallbackDetails: { status: number | null; statusText: string | null; requestId: string | null } | null
+    fallbackDetails: {
+      status: number | null;
+      statusText: string | null;
+      requestId: string | null;
+    } | null
   ): void {
     if (provider !== "fallback" || fallbackReason === null) {
       return;

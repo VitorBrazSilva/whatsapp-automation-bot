@@ -1,10 +1,8 @@
-import { loadAppConfig } from "../config/index.js";
-import { openSqliteDatabase, runMigrations, type SqliteDatabase } from "../database/index.js";
+import { DatabaseMigrationService } from "../database/index.js";
+import { createCommandContext } from "./application-context.js";
 
 export interface DbMigrateCommandOptions {
   env?: NodeJS.ProcessEnv;
-  database?: SqliteDatabase;
-  migrationsDirectory?: string;
   stdout?: (line: string) => void;
 }
 
@@ -16,21 +14,21 @@ export async function runDbMigrateCommand(
   options: DbMigrateCommandOptions = {}
 ): Promise<DbMigrateCommandResult> {
   const stdout = options.stdout ?? console.log;
-  const config = loadAppConfig(options.env);
-  const database = options.database ?? (await openSqliteDatabase({ path: config.databasePath }));
+  const context = await createCommandContext({
+    env: options.env,
+    runMigrations: false,
+    ensureLegacyTargets: false
+  });
   try {
-    const result = await runMigrations(database, options.migrationsDirectory);
+    const applied = await context.get(DatabaseMigrationService).runMigrations();
     stdout(
       JSON.stringify({
         event: "database.migrations.completed",
-        appliedCount: result.applied.length
+        appliedCount: applied.length
       })
     );
-    return { appliedCount: result.applied.length };
+    return { appliedCount: applied.length };
   } finally {
-    await database.save();
-    if (options.database === undefined) {
-      database.close();
-    }
+    await context.close();
   }
 }

@@ -101,18 +101,12 @@ export class BaileysWhatsAppClient implements WhatsAppClient, WhatsAppGroupListe
       await this.startSocket();
     } catch (error) {
       this.status = "idle";
-      this.rejectInitialReady?.(normalizeWhatsAppError(
-        error,
-        "WHATSAPP_CONNECT_FAILED",
-        "WhatsApp connection failed."
-      ));
+      this.rejectInitialReady?.(
+        normalizeWhatsAppError(error, "WHATSAPP_CONNECT_FAILED", "WhatsApp connection failed.")
+      );
       this.initialReadyPromise = null;
       this.clearInitialPromiseHandlers();
-      throw normalizeWhatsAppError(
-        error,
-        "WHATSAPP_CONNECT_FAILED",
-        "WhatsApp connection failed."
-      );
+      throw normalizeWhatsAppError(error, "WHATSAPP_CONNECT_FAILED", "WhatsApp connection failed.");
     }
     return this.initialReadyPromise;
   }
@@ -291,9 +285,7 @@ function normalizeWhatsAppError(error: unknown, code: string, fallbackMessage: s
 }
 
 function readDisconnectStatusCode(update: ConnectionUpdate): number | undefined {
-  const error = update.lastDisconnect?.error as
-    | { output?: { statusCode?: number } }
-    | undefined;
+  const error = update.lastDisconnect?.error as { output?: { statusCode?: number } } | undefined;
   return error?.output?.statusCode;
 }
 

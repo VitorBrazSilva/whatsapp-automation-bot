@@ -1,86 +1,79 @@
+import "reflect-metadata";
+import type { INestApplication } from "@nestjs/common";
+import { NestFactory } from "@nestjs/core";
+import { AppModule } from "./app.module.js";
+import { BirthdayAutomationService } from "./birthday-automation/index.js";
+import { APP_CONFIG, type AppConfig } from "./config/index.js";
+import { DatabaseMigrationService } from "./database/index.js";
+import type { WhatsAppClient } from "./integrations/index.js";
 import {
-  createBirthdayBotRuntime,
-  type BirthdayBotRuntime,
-  type CreateBirthdayBotRuntimeOptions
-} from "./app.js";
-import type { CheckResult } from "./domain/index.js";
-import { readErrorCode, readErrorMessage } from "./observability/index.js";
+  STRUCTURED_LOGGER,
+  readErrorCode,
+  readErrorMessage,
+  type StructuredLogger
+} from "./observability/index.js";
+import { TargetsService } from "./targets/index.js";
+import { WHATSAPP_CLIENT } from "./whatsapp/index.js";
 
-export interface StartProcessOptions extends CreateBirthdayBotRuntimeOptions {
+export interface StartProcessOptions {
+  env?: NodeJS.ProcessEnv;
   installSignalHandlers?: boolean;
+  listen?: boolean;
+  connectWhatsapp?: boolean;
 }
 
-export async function startProcess(options: StartProcessOptions = {}): Promise<BirthdayBotRuntime> {
-  const runtime = await createBirthdayBotRuntime({
-    ...options,
-    requireOperationalConfig: options.requireOperationalConfig ?? true
-  });
-  try {
-    if (runtime.metricsServer !== null) {
-      await runtime.metricsServer.start();
-      runtime.logger.info({
-        event: "metrics.server.started",
-        host: runtime.config.metrics.host,
-        port: runtime.config.metrics.port
-      });
+export async function startProcess(options: StartProcessOptions = {}): Promise<INestApplication> {
+  return withTemporaryEnv(options.env, async () => {
+    const app = await NestFactory.create(AppModule, { logger: false });
+    const config = app.get<AppConfig>(APP_CONFIG);
+    const logger = app.get<StructuredLogger>(STRUCTURED_LOGGER);
+    const migrations = app.get(DatabaseMigrationService);
+    const targets = app.get(TargetsService);
+    const birthdays = app.get(BirthdayAutomationService);
+    const whatsappClient = app.get<WhatsAppClient>(WHATSAPP_CLIENT);
+    app.enableShutdownHooks();
+    await app.init();
+    await migrations.runMigrations();
+    await targets.ensureLegacyBirthdayTarget();
+    whatsappClient.onReady(async () => {
+      await birthdays.runToday("whatsapp-reconnect", new Date());
+    });
+    if (options.connectWhatsapp ?? true) {
+      await whatsappClient.connect();
+      await birthdays.runToday("startup", new Date());
     }
-    runtime.whatsappClient.onReady(async () => {
-      const result = await runtime.birthdayService.runRecoveryCheck({
-        reason: "whatsapp-reconnect",
-        now: runtime.now()
-      });
-      logEvent(runtime, "birthday.recovery.completed", result);
-    });
-
-    await runtime.whatsappClient.connect();
-    const startupRecovery = await runtime.birthdayService.runRecoveryCheck({
-      reason: "startup",
-      now: runtime.now()
-    });
-    logEvent(runtime, "birthday.startup_recovery.completed", startupRecovery);
-    await runtime.scheduler.start();
-
-    runtime.logger.info({
+    if (options.listen ?? true) {
+      await app.listen(config.http.port, config.http.host);
+    }
+    logger.info({
       event: "app.started",
-      status: runtime.status,
-      timezone: runtime.config.timezone,
-      dailyCheckTime: runtime.config.dailyCheckTime,
-      databaseConfigured: runtime.config.databasePath.length > 0,
-      whatsappAuthConfigured: runtime.config.whatsappAuthDir.length > 0,
-      whatsappGroupConfigured: runtime.config.whatsappGroupId !== null,
-      openAiConfigured: runtime.config.openAiApiKeyConfigured,
-      metricsEnabled: runtime.config.metrics.enabled
+      appName: config.appName,
+      status: "ready",
+      timezone: config.timezone,
+      dailyCheckTime: config.dailyCheckTime,
+      databaseConfigured: config.databasePath.length > 0,
+      whatsappAuthConfigured: config.whatsappAuthDir.length > 0,
+      legacyWhatsappGroupConfigured: config.whatsappGroupId !== null,
+      openAiConfigured: config.openAiApiKeyConfigured,
+      metricsEnabled: config.metrics.enabled
     });
-
     if (options.installSignalHandlers ?? true) {
-      installShutdownHandlers(runtime);
+      installShutdownHandlers(app, logger);
     }
-
-    return runtime;
-  } catch (error) {
-    await runtime.close();
-    throw error;
-  }
-}
-
-function logEvent(runtime: BirthdayBotRuntime, event: string, result: CheckResult): void {
-  runtime.logger.info({
-    event,
-    ...result,
-    processedAt: result.processedAt.toISOString()
+    return app;
   });
 }
 
-function installShutdownHandlers(runtime: BirthdayBotRuntime): void {
+function installShutdownHandlers(app: INestApplication, logger: StructuredLogger): void {
   const shutdown = (signal: NodeJS.Signals) => {
-    void runtime
+    void app
       .close()
       .then(() => {
-        runtime.logger.info({ event: "app.stopped", signal });
+        logger.info({ event: "app.stopped", signal });
         process.exit(0);
       })
       .catch((error: unknown) => {
-        runtime.logger.error({
+        logger.error({
           event: "app.stop_failed",
           signal,
           errorCode: readErrorCode(error),
@@ -91,4 +84,33 @@ function installShutdownHandlers(runtime: BirthdayBotRuntime): void {
   };
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
+}
+
+async function withTemporaryEnv<T>(
+  env: NodeJS.ProcessEnv | undefined,
+  callback: () => Promise<T>
+): Promise<T> {
+  if (env === undefined) {
+    return callback();
+  }
+  const previous = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(env)) {
+    previous.set(key, process.env[key]);
+    if (value === undefined) {
+      delete process.env[key];
+      continue;
+    }
+    process.env[key] = value;
+  }
+  try {
+    return await callback();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) {
+        delete process.env[key];
+        continue;
+      }
+      process.env[key] = value;
+    }
+  }
 }

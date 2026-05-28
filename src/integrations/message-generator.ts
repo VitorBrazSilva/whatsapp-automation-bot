@@ -173,7 +173,11 @@ export class OpenAiMessageGenerator implements MessageGenerator {
         fallbackDetails: null
       };
     } catch (error) {
-      return this.createFallbackMessage(input, readFallbackReason(error), readFallbackDetails(error));
+      return this.createFallbackMessage(
+        input,
+        readFallbackReason(error),
+        readFallbackDetails(error)
+      );
     }
   }
 

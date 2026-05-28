@@ -1,22 +1,22 @@
-# Riscos e limites da v1
+# Riscos e limites
 
 ## WhatsApp pessoal
 
-O bot usa Baileys via WhatsApp Web/Linked Devices. Essa integracao nao e uma API oficial de grupos do WhatsApp. O WhatsApp pode desconectar, alterar o comportamento do cliente web ou restringir automacoes em contas pessoais.
+O servico usa Baileys via WhatsApp Web/Linked Devices. Essa integracao nao e uma API oficial de grupos do WhatsApp. O WhatsApp pode desconectar, alterar o comportamento do cliente web ou restringir automacoes em contas pessoais.
 
-Mitigacoes da v1:
+Mitigacoes:
 
 - Uso pessoal e baixo volume.
-- Apenas um grupo configurado.
+- Targets por automacao, sem envio em massa.
 - Recuperacao no startup e na reconexao.
-- Idempotencia no banco para evitar duplicidades.
+- Idempotencia por automacao, pessoa/ano e destino para evitar duplicidades.
 - Logs estruturados para diagnostico.
 
 ## OpenAI paga
 
 A geracao por IA depende de `OPENAI_API_KEY` e pode gerar custo. A chave nao deve ser tratada como gratuita nem versionada.
 
-Mitigacoes da v1:
+Mitigacoes:
 
 - Timeout configuravel.
 - Fallback local quando a API falha ou nao esta configurada.
@@ -27,18 +27,18 @@ Mitigacoes da v1:
 
 Nomes, datas de nascimento, relacoes, hobbies, observacoes, historico de mensagens e ids de grupo sao dados pessoais no contexto do projeto.
 
-Mitigacoes da v1:
+Mitigacoes:
 
 - SQLite local.
 - `.env`, banco, backups e sessao fora do Git.
-- Logs com `personId` e ids operacionais em vez de perfil completo.
+- Logs com `subjectRef` e ids operacionais em vez de perfil completo.
 - Backups manuais e controlados.
 
 ## Infraestrutura
 
 Oracle Cloud Always Free e adequada para processo continuo, mas pode ter indisponibilidade de capacidade, manutencao manual e risco de erro operacional.
 
-Mitigacoes da v1:
+Mitigacoes:
 
 - Docker Compose com volumes persistentes.
 - Processo seguro para restart.
@@ -49,7 +49,6 @@ Mitigacoes da v1:
 
 - Painel web.
 - API REST publica.
-- Multiplos grupos.
 - Mensagens privadas.
 - Campanhas ou envio em massa.
 - Backup automatico.

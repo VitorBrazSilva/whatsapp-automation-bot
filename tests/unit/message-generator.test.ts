@@ -141,7 +141,7 @@ describe("OpenAiMessageGenerator", () => {
         status: 500,
         statusText: "Internal Server Error",
         requestId: "req-test-123",
-        responseBody: "{\"error\":\"boom\"}"
+        responseBody: '{"error":"boom"}'
       })
     );
     const generator = new OpenAiMessageGenerator({

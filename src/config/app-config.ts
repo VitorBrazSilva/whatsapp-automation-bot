@@ -1,12 +1,16 @@
 export const DEFAULT_TIMEZONE = "America/Sao_Paulo";
 export const DEFAULT_DAILY_CHECK_TIME = "09:00";
-export const DEFAULT_DATABASE_PATH = "data/birthday-bot.sqlite";
+export const DEFAULT_APP_NAME = "whatsapp-automation-bot";
+export const DEFAULT_HTTP_HOST = "0.0.0.0";
+export const DEFAULT_HTTP_PORT = 3000;
+export const DEFAULT_DATABASE_PATH = "data/whatsapp-automation.sqlite";
 export const DEFAULT_WHATSAPP_AUTH_DIR = "sessions/baileys";
 export const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
 export const DEFAULT_OPENAI_TIMEOUT_MS = 15000;
 export const DEFAULT_METRICS_ENABLED = false;
 export const DEFAULT_METRICS_HOST = "127.0.0.1";
 export const DEFAULT_METRICS_PORT = 9464;
+export const DEFAULT_SCHEDULER_ENABLED = true;
 
 export type RuntimeEnvironment = "development" | "test" | "production";
 
@@ -22,15 +26,23 @@ export interface OpenAiConfig {
 }
 
 export interface AppConfig {
+  appName: string;
   nodeEnv: RuntimeEnvironment;
   timezone: string;
   dailyCheckTime: string;
+  schedulerEnabled: boolean;
   databasePath: string;
   whatsappAuthDir: string;
   whatsappGroupId: string | null;
+  http: HttpConfig;
   openAi: OpenAiConfig;
   openAiApiKeyConfigured: boolean;
   metrics: MetricsConfig;
+}
+
+export interface HttpConfig {
+  host: string;
+  port: number;
 }
 
 export interface MetricsConfig {
@@ -61,9 +73,15 @@ export function loadAppConfig(
     requireValue("WHATSAPP_GROUP_ID", whatsappGroupId);
   }
   return {
+    appName: readRequiredText("APP_NAME", env.APP_NAME, DEFAULT_APP_NAME),
     nodeEnv: readNodeEnv(env.NODE_ENV),
     timezone: readTimezone(env.APP_TIMEZONE),
     dailyCheckTime: readDailyCheckTime(env.DAILY_CHECK_TIME),
+    schedulerEnabled: readBoolean(
+      "SCHEDULER_ENABLED",
+      env.SCHEDULER_ENABLED,
+      DEFAULT_SCHEDULER_ENABLED
+    ),
     databasePath: readRequiredPath("DATABASE_PATH", env.DATABASE_PATH, DEFAULT_DATABASE_PATH),
     whatsappAuthDir: readRequiredPath(
       "WHATSAPP_AUTH_DIR",
@@ -71,6 +89,10 @@ export function loadAppConfig(
       DEFAULT_WHATSAPP_AUTH_DIR
     ),
     whatsappGroupId,
+    http: {
+      host: readRequiredText("HTTP_HOST", env.HTTP_HOST, DEFAULT_HTTP_HOST),
+      port: readPort("HTTP_PORT", env.HTTP_PORT, DEFAULT_HTTP_PORT)
+    },
     openAi: {
       apiKey: openAiApiKey === null ? null : createSecretValue(openAiApiKey),
       model: readRequiredText("OPENAI_MODEL", env.OPENAI_MODEL, DEFAULT_OPENAI_MODEL),

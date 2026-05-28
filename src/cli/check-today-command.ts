@@ -1,11 +1,18 @@
-import { createBirthdayBotRuntime, type CreateBirthdayBotRuntimeOptions } from "../app.js";
-import type { CheckResult } from "../domain/index.js";
+import type { INestApplicationContext } from "@nestjs/common";
+import { BirthdayAutomationService } from "../birthday-automation/index.js";
+import type { AutomationRunResult } from "../automation/index.js";
+import type { WhatsAppClient } from "../integrations/index.js";
+import { WHATSAPP_CLIENT } from "../whatsapp/index.js";
+import { createCommandContext } from "./application-context.js";
 
 export interface CheckTodayCommandResult {
-  result: CheckResult;
+  result: AutomationRunResult;
 }
 
-export interface CheckTodayCommandOptions extends CreateBirthdayBotRuntimeOptions {
+export interface CheckTodayCommandOptions {
+  context?: INestApplicationContext;
+  env?: NodeJS.ProcessEnv;
+  now?: Date;
   stdout?: (line: string) => void;
 }
 
@@ -13,25 +20,26 @@ export async function runCheckTodayCommand(
   options: CheckTodayCommandOptions = {}
 ): Promise<CheckTodayCommandResult> {
   const stdout = options.stdout ?? console.log;
-  const runtime = await createBirthdayBotRuntime({
-    ...options,
-    requireOperationalConfig: options.requireOperationalConfig ?? true
-  });
+  const context = options.context ?? (await createCommandContext({ env: options.env }));
+  const ownsContext = options.context === undefined;
   try {
-    await runtime.whatsappClient.connect();
-    const result = await runtime.birthdayService.runDailyCheck({
-      trigger: "manual",
-      now: runtime.now()
-    });
+    const whatsappClient = context.get<WhatsAppClient>(WHATSAPP_CLIENT);
+    await whatsappClient.connect();
+    const result = await context.get(BirthdayAutomationService).runToday("manual", options.now);
     stdout(
       JSON.stringify({
-        event: "birthday.check_today.completed",
-        ...result,
-        processedAt: result.processedAt.toISOString()
+        event: "birthdays.check_today.completed",
+        trigger: "manual",
+        ...result
       })
     );
     return { result };
   } finally {
-    await runtime.close();
+    if (ownsContext) {
+      await (
+        context.get<WhatsAppClient>(WHATSAPP_CLIENT) as { close?: () => Promise<void> }
+      ).close?.();
+      await context.close();
+    }
   }
 }

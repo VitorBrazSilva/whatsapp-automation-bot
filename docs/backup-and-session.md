@@ -2,13 +2,13 @@
 
 ## Backup manual do SQLite
 
-O backup da v1 e manual e intencional. Evite sincronizacao automatica para servicos de terceiros sem avaliar privacidade dos dados familiares.
+O backup e manual e intencional. Evite sincronizacao automatica para servicos de terceiros sem avaliar privacidade dos dados familiares.
 
 Com Docker Compose:
 
 ```bash
-docker compose stop birthday-whatsapp-bot
-docker run --rm -v my_bot_wpp_birthday-bot-data:/data -v "$PWD/backups:/backup" alpine sh -c "cp /data/birthday-bot.sqlite /backup/birthday-bot-$(date +%Y%m%d-%H%M%S).sqlite"
+docker compose stop whatsapp-automation-bot
+docker run --rm -v my_bot_wpp_whatsapp-automation-data:/data -v "$PWD/backups:/backup" alpine sh -c "cp /data/whatsapp-automation.sqlite /backup/whatsapp-automation-$(date +%Y%m%d-%H%M%S).sqlite"
 docker compose up -d
 ```
 
@@ -26,7 +26,7 @@ Cuidados:
 1. Pare o bot.
 2. Substitua o arquivo SQLite atual pelo backup escolhido.
 3. Confira permissoes do arquivo.
-4. Suba o bot e execute `npm run check:today` ou observe os logs de startup.
+4. Suba o servico e execute `npm run birthdays:check-today` ou observe os logs de startup.
 
 ## Sessao Baileys
 
@@ -37,6 +37,6 @@ Cuidados:
 - Nao copie a sessao para maquinas nao confiaveis.
 - Nao versione `sessions/`, QR Code, tokens ou credenciais.
 - Em caso de suspeita de vazamento, remova o dispositivo vinculado no WhatsApp e apague a pasta da sessao.
-- Se o bot ficar `logged_out`, apague a sessao persistida e rode `npm run list:groups` ou suba o bot para parear novamente.
+- Se o cliente ficar `logged_out`, apague a sessao persistida e rode `npm run whatsapp:list-groups` ou suba o servico para parear novamente.
 
-Em Docker Compose, a sessao fica no volume `birthday-bot-sessions`.
+Em Docker Compose, a sessao fica no volume `whatsapp-automation-sessions`.

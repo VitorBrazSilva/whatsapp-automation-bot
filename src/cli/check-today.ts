@@ -5,7 +5,7 @@ try {
 } catch (error) {
   console.error(
     JSON.stringify({
-      event: "birthday.check_today.failed",
+      event: "birthdays.check_today.failed",
       errorCode: error instanceof Error ? error.name : "UNKNOWN_ERROR",
       errorMessage: error instanceof Error ? error.message : "Unknown error."
     })

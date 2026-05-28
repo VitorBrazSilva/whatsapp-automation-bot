@@ -18,6 +18,11 @@ export interface MetricsServerOptions {
 }
 
 export type MetricName =
+  | "automation_runs_total"
+  | "message_deliveries_total"
+  | "message_delivery_duplicates_total"
+  | "birthday_people_matched_total"
+  | "message_generation_fallbacks_total"
   | "birthday_checks_total"
   | "birthday_birthdays_found_total"
   | "birthday_delivery_attempts_total"
@@ -33,6 +38,11 @@ interface MetricSample {
 }
 
 const METRIC_HELP: Record<MetricName, string> = {
+  automation_runs_total: "Total automation runs by automation and status.",
+  message_deliveries_total: "Total message deliveries by automation and status.",
+  message_delivery_duplicates_total: "Total duplicate message deliveries skipped.",
+  birthday_people_matched_total: "Total birthday people matched.",
+  message_generation_fallbacks_total: "Total message generations that used fallback.",
   birthday_checks_total: "Total birthday checks by status.",
   birthday_birthdays_found_total: "Total birthdays found during checks.",
   birthday_delivery_attempts_total: "Total birthday delivery attempts by status.",
@@ -42,6 +52,11 @@ const METRIC_HELP: Record<MetricName, string> = {
 };
 
 const METRIC_TYPE: Record<MetricName, "counter" | "gauge"> = {
+  automation_runs_total: "counter",
+  message_deliveries_total: "counter",
+  message_delivery_duplicates_total: "counter",
+  birthday_people_matched_total: "counter",
+  message_generation_fallbacks_total: "counter",
   birthday_checks_total: "counter",
   birthday_birthdays_found_total: "counter",
   birthday_delivery_attempts_total: "counter",

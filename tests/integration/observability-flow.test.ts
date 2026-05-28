@@ -1,14 +1,22 @@
+import { Test } from "@nestjs/testing";
 import { describe, expect, it } from "vitest";
+import { AppModule } from "../../src/app.module.js";
+import { BIRTHDAY_MESSAGE_GENERATOR } from "../../src/ai/index.js";
 import {
-  openSqliteDatabase,
-  runMigrations,
-  type SqliteDatabase
-} from "../../src/database/index.js";
+  BirthdayAutomationService,
+  TypeOrmPersonRepository
+} from "../../src/birthday-automation/index.js";
+import { DatabaseMigrationService } from "../../src/database/index.js";
 import type { Person } from "../../src/domain/index.js";
 import type { MessageGenerator, SendResult, WhatsAppClient } from "../../src/integrations/index.js";
-import { InMemoryMetricsRegistry, JsonLogger } from "../../src/observability/index.js";
-import { SqlitePersonRepository } from "../../src/repositories/index.js";
-import { startProcess } from "../../src/process.js";
+import {
+  InMemoryMetricsRegistry,
+  JsonLogger,
+  METRICS_REGISTRY,
+  STRUCTURED_LOGGER
+} from "../../src/observability/index.js";
+import { TargetsService } from "../../src/targets/index.js";
+import { WHATSAPP_CLIENT } from "../../src/whatsapp/index.js";
 
 const now = new Date("2026-05-26T12:00:00.000Z");
 const groupId = "family-group@g.us";
@@ -20,46 +28,66 @@ const env = {
   WHATSAPP_AUTH_DIR: "unused-test-auth",
   WHATSAPP_GROUP_ID: groupId,
   OPENAI_API_KEY: "sk-test-secret-value",
-  METRICS_ENABLED: "true"
+  METRICS_ENABLED: "true",
+  SCHEDULER_ENABLED: "false"
 };
 
 describe("observability integration", () => {
   it("emits useful logs and metrics without exposing personal profiles or secrets", async () => {
-    const database = await createDatabaseWithBirthdayPerson();
+    const previousEnv = applyEnv(env);
     const logs: string[] = [];
     const logger = new JsonLogger({
       now: () => now,
       sink: (line) => logs.push(line)
     });
     const metrics = new InMemoryMetricsRegistry();
-    const runtime = await startProcess({
-      env,
-      database,
-      logger,
-      metrics,
-      whatsappClient: new FakeWhatsAppClient(),
-      messageGenerator: new FallbackMessageGenerator(),
-      runDatabaseMigrations: false,
-      nowProvider: () => now,
-      installSignalHandlers: false,
-      metricsServer: null
-    });
-
-    await runtime.close();
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule]
+    })
+      .overrideProvider(WHATSAPP_CLIENT)
+      .useValue(new FakeWhatsAppClient())
+      .overrideProvider(BIRTHDAY_MESSAGE_GENERATOR)
+      .useValue(new FallbackMessageGenerator())
+      .overrideProvider(STRUCTURED_LOGGER)
+      .useValue(logger)
+      .overrideProvider(METRICS_REGISTRY)
+      .useValue(metrics)
+      .compile();
+    try {
+      await moduleRef.init();
+      await moduleRef.get(DatabaseMigrationService).runMigrations();
+      await seedBirthdayPerson(moduleRef.get(TypeOrmPersonRepository));
+      await moduleRef.get(TargetsService).ensureLegacyBirthdayTarget();
+      await moduleRef.get(BirthdayAutomationService).runToday("startup", now);
+      await moduleRef.get(BirthdayAutomationService).runToday("whatsapp-reconnect", now);
+    } finally {
+      restoreEnv(previousEnv);
+      await moduleRef.close();
+    }
 
     const joinedLogs = logs.join("\n");
     const renderedMetrics = metrics.renderPrometheus();
-    expect(joinedLogs).toContain("birthday.check.started");
-    expect(joinedLogs).toContain("birthday.message_generation.fallback");
-    expect(joinedLogs).toContain("birthday.delivery.sent");
+    expect(joinedLogs).toContain("birthday.people_matched");
+    expect(joinedLogs).toContain("message.generation.fallback");
+    expect(joinedLogs).toContain("message.delivery.sent");
+    expect(joinedLogs).toContain("message.delivery.skipped");
     expect(joinedLogs).not.toContain("sk-test-secret-value");
     expect(joinedLogs).not.toContain("raw-session");
     expect(joinedLogs).not.toContain("Mensagem completa");
     expect(joinedLogs).not.toContain("Ana Maria");
-    expect(renderedMetrics).toContain('birthday_checks_total{status="completed"} 2');
-    expect(renderedMetrics).toContain("birthday_birthdays_found_total 2");
-    expect(renderedMetrics).toContain('birthday_delivery_attempts_total{status="sent"} 1');
-    expect(renderedMetrics).toContain("birthday_message_generation_failures_total 1");
+    expect(renderedMetrics).toContain("birthday_people_matched_total 2");
+    expect(renderedMetrics).toContain(
+      'message_generation_fallbacks_total{automation="birthdays.daily",reason="OPENAI_ERROR"} 1'
+    );
+    expect(renderedMetrics).toContain(
+      'message_deliveries_total{automation="birthdays.daily",status="sent"} 1'
+    );
+    expect(renderedMetrics).toContain(
+      'message_deliveries_total{automation="birthdays.daily",status="skipped"} 1'
+    );
+    expect(renderedMetrics).toContain(
+      'message_delivery_duplicates_total{automation="birthdays.daily"} 1'
+    );
   });
 });
 
@@ -76,48 +104,48 @@ class FallbackMessageGenerator implements MessageGenerator {
 }
 
 class FakeWhatsAppClient implements WhatsAppClient {
-  private readonly readyHandlers: Array<() => Promise<void>> = [];
-  private sent = false;
-
   async connect(): Promise<void> {
-    await this.emitReady();
+    return undefined;
   }
 
   async sendGroupMessage(): Promise<SendResult> {
-    if (this.sent) {
-      throw new Error("raw-session should never be logged from duplicate path");
-    }
-    this.sent = true;
     return {
       providerMessageId: "provider-1",
       sentAt: now
     };
   }
 
-  onReady(handler: () => Promise<void>): void {
-    this.readyHandlers.push(handler);
-  }
-
-  async close(): Promise<void> {
+  onReady(): void {
     return undefined;
-  }
-
-  private async emitReady(): Promise<void> {
-    for (const handler of this.readyHandlers) {
-      await handler();
-    }
   }
 }
 
-async function createDatabaseWithBirthdayPerson(): Promise<SqliteDatabase> {
-  const database = await openSqliteDatabase({ path: ":memory:" });
-  await runMigrations(database);
-  const people = new SqlitePersonRepository(database, () => now);
+async function seedBirthdayPerson(people: TypeOrmPersonRepository): Promise<void> {
   await people.create({
     id: "person-1",
     name: "Ana Maria",
     birthDate: "1990-05-26",
-    notes: "raw-session"
+    notes: "raw-session",
+    createdAt: now,
+    updatedAt: now
   });
-  return database;
+}
+
+function applyEnv(values: NodeJS.ProcessEnv): Map<string, string | undefined> {
+  const previous = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(values)) {
+    previous.set(key, process.env[key]);
+    process.env[key] = value;
+  }
+  return previous;
+}
+
+function restoreEnv(previous: Map<string, string | undefined>): void {
+  for (const [key, value] of previous) {
+    if (value === undefined) {
+      delete process.env[key];
+      continue;
+    }
+    process.env[key] = value;
+  }
 }
