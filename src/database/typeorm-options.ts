@@ -1,14 +1,14 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { TypeOrmModuleOptions } from "@nestjs/typeorm";
-import type { AppConfig } from "../config/index.js";
+import type { AppConfig } from "../infrastructure/config/index.js";
 import {
   AutomationRunEntity,
   AutomationTargetEntity,
   MessageDeliveryEntity,
   PersonEntity,
   WhatsappTargetEntity
-} from "./entities/index.js";
+} from "../infrastructure/index.js";
 import { InitialWhatsappAutomationSchema1710000000000 } from "./migrations/1710000000000-initial-whatsapp-automation-schema.js";
 
 export function createTypeOrmOptions(config: AppConfig): TypeOrmModuleOptions {

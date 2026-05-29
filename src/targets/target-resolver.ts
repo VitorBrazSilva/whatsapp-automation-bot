@@ -1,12 +1,8 @@
+import type { WhatsappTarget } from "../domain/index.js";
+
 export const TARGET_RESOLVER = Symbol("TARGET_RESOLVER");
 
-export interface WhatsappTarget {
-  id: string;
-  jid: string;
-  displayName: string;
-  type: "group";
-  active: boolean;
-}
+export type { WhatsappTarget } from "../domain/index.js";
 
 export interface AutomationTargetLink {
   id: string;

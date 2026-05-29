@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
-import type { Person } from "../../src/domain/index.js";
+import {
+  createFallbackBirthdayMessage,
+  validateGeneratedBirthdayMessage,
+  type Person
+} from "../../src/domain/index.js";
 import {
   buildOpenAiBirthdayMessageRequest,
-  createFallbackBirthdayMessage,
-  OpenAiMessageGenerator,
+  OpenAiMessageGeneratorAdapter,
   OpenAiResponsesApiError,
   type OpenAiCreateResponseRequest,
   type OpenAiCreateResponseResult,
-  type OpenAiResponsesClient,
-  validateGeneratedBirthdayMessage
-} from "../../src/integrations/index.js";
+  type OpenAiResponsesClient
+} from "../../src/infrastructure/ai/index.js";
 
 const now = new Date("2026-05-26T12:00:00.000Z");
 
@@ -69,7 +71,7 @@ describe("OpenAiMessageGenerator", () => {
     const client = new FakeOpenAiClient({
       output_text: JSON.stringify({ message: "Feliz aniversario, Ana! Que seu dia seja especial." })
     });
-    const generator = new OpenAiMessageGenerator({
+    const generator = new OpenAiMessageGeneratorAdapter({
       model: "gpt-4.1-mini",
       timeoutMs: 100,
       client,
@@ -97,7 +99,7 @@ describe("OpenAiMessageGenerator", () => {
 
   it("falls back when OpenAI times out", async () => {
     const client = new NeverResolvingOpenAiClient();
-    const generator = new OpenAiMessageGenerator({
+    const generator = new OpenAiMessageGeneratorAdapter({
       model: "gpt-4.1-mini",
       timeoutMs: 5,
       client
@@ -119,7 +121,7 @@ describe("OpenAiMessageGenerator", () => {
     const client = new FakeOpenAiClient({
       output_text: JSON.stringify({ message: repeatedMessage })
     });
-    const generator = new OpenAiMessageGenerator({
+    const generator = new OpenAiMessageGeneratorAdapter({
       model: "gpt-4.1-mini",
       timeoutMs: 100,
       client
@@ -144,7 +146,7 @@ describe("OpenAiMessageGenerator", () => {
         responseBody: '{"error":"boom"}'
       })
     );
-    const generator = new OpenAiMessageGenerator({
+    const generator = new OpenAiMessageGeneratorAdapter({
       model: "gpt-4.1-mini",
       timeoutMs: 100,
       client

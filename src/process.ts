@@ -1,18 +1,26 @@
 import "reflect-metadata";
 import type { INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
-import { AppModule } from "./app.module.js";
-import { BirthdayAutomationService } from "./birthday-automation/index.js";
-import { APP_CONFIG, type AppConfig } from "./config/index.js";
-import { DatabaseMigrationService } from "./database/index.js";
-import type { WhatsAppClient } from "./integrations/index.js";
 import {
+  AddGroupTargetUseCase,
+  RunDatabaseMigrationsUseCase,
+  type DatabaseMigrationPort,
+  type TargetConfigurationPort
+} from "./application/index.js";
+import { AppModule } from "./app.module.js";
+import { AUTOMATION_RUNNER, type AutomationRunner } from "./automation/index.js";
+import { BIRTHDAY_AUTOMATION_KEY } from "./domain/index.js";
+import type { WhatsAppClient } from "./infrastructure/index.js";
+import {
+  APP_CONFIG,
+  DATABASE_MIGRATION_PORT,
   STRUCTURED_LOGGER,
+  TARGET_CONFIGURATION_PORT,
   readErrorCode,
   readErrorMessage,
+  type AppConfig,
   type StructuredLogger
-} from "./observability/index.js";
-import { TargetsService } from "./targets/index.js";
+} from "./infrastructure/index.js";
 import { WHATSAPP_CLIENT } from "./whatsapp/index.js";
 
 export interface StartProcessOptions {
@@ -27,20 +35,20 @@ export async function startProcess(options: StartProcessOptions = {}): Promise<I
     const app = await NestFactory.create(AppModule, { logger: false });
     const config = app.get<AppConfig>(APP_CONFIG);
     const logger = app.get<StructuredLogger>(STRUCTURED_LOGGER);
-    const migrations = app.get(DatabaseMigrationService);
-    const targets = app.get(TargetsService);
-    const birthdays = app.get(BirthdayAutomationService);
+    const migrations = app.get<DatabaseMigrationPort>(DATABASE_MIGRATION_PORT);
+    const targets = app.get<TargetConfigurationPort>(TARGET_CONFIGURATION_PORT);
+    const automationRunner = app.get<AutomationRunner>(AUTOMATION_RUNNER);
     const whatsappClient = app.get<WhatsAppClient>(WHATSAPP_CLIENT);
     app.enableShutdownHooks();
     await app.init();
-    await migrations.runMigrations();
-    await targets.ensureLegacyBirthdayTarget();
+    await new RunDatabaseMigrationsUseCase(migrations).execute();
+    await ensureLegacyBirthdayTarget(targets, config);
     whatsappClient.onReady(async () => {
-      await birthdays.runToday("whatsapp-reconnect", new Date());
+      await automationRunner.run(BIRTHDAY_AUTOMATION_KEY, "whatsapp-reconnect", new Date());
     });
     if (options.connectWhatsapp ?? true) {
       await whatsappClient.connect();
-      await birthdays.runToday("startup", new Date());
+      await automationRunner.run(BIRTHDAY_AUTOMATION_KEY, "startup", new Date());
     }
     if (options.listen ?? true) {
       await app.listen(config.http.port, config.http.host);
@@ -61,6 +69,19 @@ export async function startProcess(options: StartProcessOptions = {}): Promise<I
       installShutdownHandlers(app, logger);
     }
     return app;
+  });
+}
+
+async function ensureLegacyBirthdayTarget(
+  targets: TargetConfigurationPort,
+  config: AppConfig
+): Promise<void> {
+  if (config.whatsappGroupId === null) {
+    return;
+  }
+  await new AddGroupTargetUseCase(targets).execute({
+    automationKey: BIRTHDAY_AUTOMATION_KEY,
+    jid: config.whatsappGroupId
   });
 }
 

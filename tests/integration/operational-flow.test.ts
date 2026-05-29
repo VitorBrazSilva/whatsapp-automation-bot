@@ -3,22 +3,21 @@ import { Test } from "@nestjs/testing";
 import { describe, expect, it } from "vitest";
 import { AppModule } from "../../src/app.module.js";
 import { BIRTHDAY_MESSAGE_GENERATOR } from "../../src/ai/index.js";
-import { BirthdayAutomationService } from "../../src/birthday-automation/index.js";
-import { runCheckTodayCommand } from "../../src/cli/check-today-command.js";
-import { runDbMigrateCommand } from "../../src/cli/db-migrate-command.js";
-import { runListGroupsCommand } from "../../src/cli/list-groups-command.js";
-import { runTargetsAddCommand } from "../../src/cli/targets-add-command.js";
-import { runTargetsListCommand } from "../../src/cli/targets-list-command.js";
+import { AUTOMATION_RUNNER, type AutomationRunner } from "../../src/automation/index.js";
+import { runCheckTodayCommand } from "../../src/presentation/cli/check-today-command.js";
+import { runDbMigrateCommand } from "../../src/presentation/cli/db-migrate-command.js";
+import { runListGroupsCommand } from "../../src/presentation/cli/list-groups-command.js";
+import { runTargetsAddCommand } from "../../src/presentation/cli/targets-add-command.js";
+import { runTargetsListCommand } from "../../src/presentation/cli/targets-list-command.js";
 import { DatabaseMigrationService } from "../../src/database/index.js";
-import type { Person } from "../../src/domain/index.js";
+import { BIRTHDAY_AUTOMATION_KEY, type Person } from "../../src/domain/index.js";
+import type { MessageGenerator } from "../../src/infrastructure/ai/index.js";
+import { TargetsService, TypeOrmPersonRepository } from "../../src/infrastructure/index.js";
 import type {
-  MessageGenerator,
   SendResult,
   WhatsAppClient,
   WhatsAppGroup
-} from "../../src/integrations/index.js";
-import { TypeOrmPersonRepository } from "../../src/birthday-automation/index.js";
-import { TargetsService } from "../../src/targets/index.js";
+} from "../../src/infrastructure/whatsapp/index.js";
 import { WHATSAPP_CLIENT } from "../../src/whatsapp/index.js";
 import { startProcess } from "../../src/process.js";
 
@@ -43,7 +42,9 @@ describe("operational flow", () => {
     await context.get(TargetsService).ensureLegacyBirthdayTarget();
     await context.get(TargetsService).addGroupTarget("birthdays.daily", "friends@g.us", "Friends");
 
-    const result = await context.get(BirthdayAutomationService).runToday("manual", now);
+    const result = await context
+      .get<AutomationRunner>(AUTOMATION_RUNNER)
+      .run(BIRTHDAY_AUTOMATION_KEY, "manual", now);
 
     expect(result).toMatchObject({
       itemsMatched: 1,

@@ -1,9 +1,11 @@
 import { Module } from "@nestjs/common";
-import { APP_CONFIG, AutomationConfigModule, type AppConfig } from "../config/index.js";
 import {
-  OpenAiMessageGenerator,
+  APP_CONFIG,
+  AutomationConfigModule,
+  OpenAiMessageGeneratorAdapter,
+  type AppConfig,
   type MessageGenerator
-} from "../integrations/message-generator.js";
+} from "../infrastructure/index.js";
 
 export const BIRTHDAY_MESSAGE_GENERATOR = Symbol("BIRTHDAY_MESSAGE_GENERATOR");
 
@@ -14,7 +16,7 @@ export const BIRTHDAY_MESSAGE_GENERATOR = Symbol("BIRTHDAY_MESSAGE_GENERATOR");
       provide: BIRTHDAY_MESSAGE_GENERATOR,
       inject: [APP_CONFIG],
       useFactory: (config: AppConfig): MessageGenerator =>
-        new OpenAiMessageGenerator({
+        new OpenAiMessageGeneratorAdapter({
           apiKey: config.openAi.apiKey?.reveal(),
           model: config.openAi.model,
           timeoutMs: config.openAi.timeoutMs

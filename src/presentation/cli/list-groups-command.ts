@@ -1,0 +1,44 @@
+import type { INestApplicationContext } from "@nestjs/common";
+import { ListWhatsAppGroupsUseCase, type WhatsAppGroup } from "../../application/index.js";
+import type { WhatsAppClient } from "../../infrastructure/index.js";
+import { WHATSAPP_CLIENT } from "../../whatsapp/index.js";
+import { createCommandContext } from "./application-context.js";
+
+export interface GroupListWhatsAppClient extends WhatsAppClient {
+  close?(): Promise<void> | void;
+}
+
+export interface ListGroupsCommandOptions {
+  context?: INestApplicationContext;
+  env?: NodeJS.ProcessEnv;
+  stdout?: (line: string) => void;
+}
+
+export interface ListGroupsCommandResult {
+  groups: WhatsAppGroup[];
+}
+
+export async function runListGroupsCommand(
+  options: ListGroupsCommandOptions = {}
+): Promise<ListGroupsCommandResult> {
+  const stdout = options.stdout ?? console.log;
+  const context =
+    options.context ??
+    (await createCommandContext({
+      env: options.env,
+      ensureLegacyTargets: false
+    }));
+  const ownsContext = options.context === undefined;
+  const client = context.get<GroupListWhatsAppClient>(WHATSAPP_CLIENT);
+  try {
+    await client.connect();
+    const groups = await new ListWhatsAppGroupsUseCase(client).execute();
+    stdout(JSON.stringify({ event: "whatsapp.list_groups.completed", groups }, null, 2));
+    return { groups };
+  } finally {
+    if (ownsContext) {
+      await client.close?.();
+      await context.close();
+    }
+  }
+}

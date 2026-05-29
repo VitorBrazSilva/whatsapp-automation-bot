@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
-import {
-  DefaultBirthdayService,
-  getLocalBirthdayDate,
-  type CheckTrigger
-} from "../../src/domain/index.js";
+import { DefaultBirthdayService, type CheckTrigger } from "../../src/application/index.js";
+import { getLocalBirthdayDate } from "../../src/domain/index.js";
 import type { Person } from "../../src/domain/index.js";
-import type { MessageGenerator, SendResult, WhatsAppClient } from "../../src/integrations/index.js";
+import type { MessageGenerator } from "../../src/infrastructure/ai/index.js";
+import type { SendResult, WhatsAppClient } from "../../src/infrastructure/whatsapp/index.js";
 import type {
   BirthdayCheck,
   BirthdayCheckRepository,

@@ -1,4 +1,4 @@
-import type { AutomationTrigger } from "../database/index.js";
+import type { AutomationTrigger } from "../domain/index.js";
 
 export const AUTOMATION_RUNNER = Symbol("AUTOMATION_RUNNER");
 export const DELIVERY_LOG = Symbol("DELIVERY_LOG");

@@ -1,13 +1,16 @@
 import { Inject, Injectable, Module, OnApplicationShutdown } from "@nestjs/common";
-import { APP_CONFIG, AutomationConfigModule, type AppConfig } from "../config/index.js";
-import type { WhatsAppClient } from "../integrations/whatsapp-client.js";
 import {
+  APP_CONFIG,
+  AutomationConfigModule,
+  BaileysWhatsAppClientAdapter,
   METRICS_REGISTRY,
   ObservabilityModule,
   STRUCTURED_LOGGER,
+  type AppConfig,
   type MetricsRegistry,
-  type StructuredLogger
-} from "../observability/index.js";
+  type StructuredLogger,
+  type WhatsAppClient
+} from "../infrastructure/index.js";
 
 export const WHATSAPP_CLIENT = Symbol("WHATSAPP_CLIENT");
 
@@ -34,9 +37,7 @@ class WhatsappShutdownService implements OnApplicationShutdown {
         logger: StructuredLogger,
         metrics: MetricsRegistry
       ): Promise<WhatsAppClient> => {
-        const { BaileysWhatsAppClient } =
-          await import("../integrations/whatsapp/baileys-whatsapp-client.js");
-        return new BaileysWhatsAppClient({
+        return new BaileysWhatsAppClientAdapter({
           authDir: config.whatsappAuthDir,
           logger,
           metrics

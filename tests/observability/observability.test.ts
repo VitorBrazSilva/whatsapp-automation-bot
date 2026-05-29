@@ -3,7 +3,7 @@ import {
   InMemoryMetricsRegistry,
   JsonLogger,
   sanitizeLogFields
-} from "../../src/observability/index.js";
+} from "../../src/infrastructure/observability/index.js";
 
 describe("observability", () => {
   it("writes structured JSON logs with redacted sensitive fields", () => {

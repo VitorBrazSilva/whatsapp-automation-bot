@@ -1,4 +1,4 @@
-import { loadAppConfig, type AppConfig } from "./config/index.js";
+import { loadAppConfig, type AppConfig } from "./infrastructure/config/index.js";
 
 export interface CreateAppOptions {
   env?: NodeJS.ProcessEnv;

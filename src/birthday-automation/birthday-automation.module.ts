@@ -2,16 +2,23 @@ import { Module } from "@nestjs/common";
 import { ScheduleModule } from "@nestjs/schedule";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { AiModule } from "../ai/index.js";
-import { AutomationModule } from "../automation/index.js";
-import { AutomationConfigModule } from "../config/index.js";
-import { PersonEntity } from "../database/index.js";
-import { ObservabilityModule } from "../observability/index.js";
+import {
+  AutomationModule,
+  AutomationRegistryService,
+  type AutomationHandler
+} from "../automation/index.js";
+import {
+  AUTOMATION_WORKFLOW_REGISTRATION,
+  BIRTHDAY_AUTOMATION_WORKFLOW,
+  AutomationConfigModule,
+  ObservabilityModule,
+  PersonEntity,
+  TypeOrmPersonRepository
+} from "../infrastructure/index.js";
 import { TargetsModule } from "../targets/index.js";
 import { WhatsappModule } from "../whatsapp/index.js";
 import { BirthdayAutomationHandler } from "./birthday-automation.handler.js";
-import { BirthdayAutomationService } from "./birthday-automation.service.js";
-import { BirthdaySchedulerService } from "./birthday-scheduler.service.js";
-import { TypeOrmPersonRepository } from "./typeorm-person.repository.js";
+import { BirthdaySchedulerService } from "../presentation/scheduler/index.js";
 
 @Module({
   imports: [
@@ -27,9 +34,20 @@ import { TypeOrmPersonRepository } from "./typeorm-person.repository.js";
   providers: [
     TypeOrmPersonRepository,
     BirthdayAutomationHandler,
-    BirthdayAutomationService,
+    {
+      provide: BIRTHDAY_AUTOMATION_WORKFLOW,
+      useExisting: BirthdayAutomationHandler
+    },
+    {
+      provide: AUTOMATION_WORKFLOW_REGISTRATION,
+      inject: [AutomationRegistryService, BIRTHDAY_AUTOMATION_WORKFLOW],
+      useFactory: (registry: AutomationRegistryService, workflow: AutomationHandler): true => {
+        registry.register(workflow);
+        return true;
+      }
+    },
     BirthdaySchedulerService
   ],
-  exports: [BirthdayAutomationService, TypeOrmPersonRepository]
+  exports: [TypeOrmPersonRepository]
 })
 export class BirthdayAutomationModule {}

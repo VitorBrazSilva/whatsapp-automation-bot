@@ -2,6 +2,15 @@
 
 Servico pessoal em Node.js + TypeScript + NestJS para automacoes de WhatsApp. A automacao inicial envia mensagens de aniversario para um ou mais grupos, usando SQLite local, Baileys via WhatsApp Web/Linked Devices e OpenAI opcional com fallback local seguro.
 
+## Arquitetura
+
+O codigo segue Clean Architecture/Hexagonal sem CQRS ou Event Sourcing. `src/domain/` concentra
+regras puras de aniversario, automacao e targets. `src/application/` contem portas e use cases.
+`src/infrastructure/` implementa adapters driven para TypeORM, Baileys, OpenAI, configuracao,
+observabilidade e composition root NestJS. `src/presentation/` contem adapters driver para CLI,
+scheduler, health e metrics. Modulos Nest de compatibilidade permanecem apenas como composition
+root/transicao; novas regras de negocio devem entrar no dominio ou nos use cases.
+
 ## Comandos
 
 - `npm run db:migrate`: aplica migrations TypeORM no SQLite.

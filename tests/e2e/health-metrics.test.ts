@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { AppModule } from "../../src/app.module.js";
 import { BIRTHDAY_MESSAGE_GENERATOR } from "../../src/ai/index.js";
 import type { Person } from "../../src/domain/index.js";
-import type { MessageGenerator, SendResult, WhatsAppClient } from "../../src/integrations/index.js";
+import type { MessageGenerator } from "../../src/infrastructure/ai/index.js";
+import type { SendResult, WhatsAppClient } from "../../src/infrastructure/whatsapp/index.js";
 import { WHATSAPP_CLIENT } from "../../src/whatsapp/index.js";
 
 const env = {

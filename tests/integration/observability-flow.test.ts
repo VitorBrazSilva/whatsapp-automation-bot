@@ -2,20 +2,19 @@ import { Test } from "@nestjs/testing";
 import { describe, expect, it } from "vitest";
 import { AppModule } from "../../src/app.module.js";
 import { BIRTHDAY_MESSAGE_GENERATOR } from "../../src/ai/index.js";
-import {
-  BirthdayAutomationService,
-  TypeOrmPersonRepository
-} from "../../src/birthday-automation/index.js";
+import { AUTOMATION_RUNNER, type AutomationRunner } from "../../src/automation/index.js";
 import { DatabaseMigrationService } from "../../src/database/index.js";
-import type { Person } from "../../src/domain/index.js";
-import type { MessageGenerator, SendResult, WhatsAppClient } from "../../src/integrations/index.js";
+import { BIRTHDAY_AUTOMATION_KEY, type Person } from "../../src/domain/index.js";
+import type { MessageGenerator } from "../../src/infrastructure/ai/index.js";
 import {
   InMemoryMetricsRegistry,
   JsonLogger,
   METRICS_REGISTRY,
-  STRUCTURED_LOGGER
-} from "../../src/observability/index.js";
-import { TargetsService } from "../../src/targets/index.js";
+  STRUCTURED_LOGGER,
+  TargetsService,
+  TypeOrmPersonRepository
+} from "../../src/infrastructure/index.js";
+import type { SendResult, WhatsAppClient } from "../../src/infrastructure/whatsapp/index.js";
 import { WHATSAPP_CLIENT } from "../../src/whatsapp/index.js";
 
 const now = new Date("2026-05-26T12:00:00.000Z");
@@ -58,8 +57,9 @@ describe("observability integration", () => {
       await moduleRef.get(DatabaseMigrationService).runMigrations();
       await seedBirthdayPerson(moduleRef.get(TypeOrmPersonRepository));
       await moduleRef.get(TargetsService).ensureLegacyBirthdayTarget();
-      await moduleRef.get(BirthdayAutomationService).runToday("startup", now);
-      await moduleRef.get(BirthdayAutomationService).runToday("whatsapp-reconnect", now);
+      const runner = moduleRef.get<AutomationRunner>(AUTOMATION_RUNNER);
+      await runner.run(BIRTHDAY_AUTOMATION_KEY, "startup", now);
+      await runner.run(BIRTHDAY_AUTOMATION_KEY, "whatsapp-reconnect", now);
     } finally {
       restoreEnv(previousEnv);
       await moduleRef.close();

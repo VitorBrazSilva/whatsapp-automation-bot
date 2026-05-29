@@ -15,7 +15,7 @@ import {
   DEFAULT_METRICS_HOST,
   DEFAULT_METRICS_PORT,
   loadAppConfig
-} from "../../src/config/index.js";
+} from "../../src/infrastructure/config/index.js";
 
 describe("loadAppConfig", () => {
   it("uses safe defaults without exposing secret values", () => {

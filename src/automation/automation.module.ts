@@ -1,11 +1,15 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
-import { AutomationConfigModule } from "../config/index.js";
-import { AutomationRunEntity, MessageDeliveryEntity } from "../database/index.js";
+import { AutomationConfigModule } from "../infrastructure/config/index.js";
+import {
+  AutomationRunEntity,
+  MessageDeliveryEntity,
+  TypeOrmAutomationRunRepositoryAdapter,
+  TypeOrmDeliveryLogService
+} from "../infrastructure/index.js";
 import { AUTOMATION_RUNNER, DELIVERY_LOG } from "./automation-contracts.js";
 import { AutomationRegistryService } from "./automation-registry.service.js";
 import { AutomationRunnerService } from "./automation-runner.service.js";
-import { TypeOrmDeliveryLogService } from "./delivery-log.service.js";
 
 @Module({
   imports: [
@@ -14,6 +18,7 @@ import { TypeOrmDeliveryLogService } from "./delivery-log.service.js";
   ],
   providers: [
     AutomationRegistryService,
+    TypeOrmAutomationRunRepositoryAdapter,
     AutomationRunnerService,
     TypeOrmDeliveryLogService,
     {

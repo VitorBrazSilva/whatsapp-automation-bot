@@ -9,18 +9,18 @@ import {
   type UserFacingSocketConfig
 } from "baileys";
 import {
-  BaileysWhatsAppClient,
+  BaileysWhatsAppClientAdapter,
   type BaileysSocketLike,
   type WhatsAppLogger
-} from "../../src/integrations/index.js";
+} from "../../src/infrastructure/whatsapp/index.js";
 
-describe("BaileysWhatsAppClient", () => {
+describe("BaileysWhatsAppClientAdapter", () => {
   it("persists auth, renders QR without logging raw QR and notifies ready handlers", async () => {
     const authDir = await createTempDir();
     const sockets: FakeBaileysSocket[] = [];
     const qrCodes: string[] = [];
     const logger = new MemoryLogger();
-    const client = new BaileysWhatsAppClient({
+    const client = new BaileysWhatsAppClientAdapter({
       authDir,
       authStateFactory: createAuthStateFactory(),
       socketFactory: createSocketFactory(sockets),
@@ -112,8 +112,10 @@ describe("BaileysWhatsAppClient", () => {
   });
 });
 
-async function createConnectedClient(sockets: FakeBaileysSocket[]): Promise<BaileysWhatsAppClient> {
-  const client = new BaileysWhatsAppClient({
+async function createConnectedClient(
+  sockets: FakeBaileysSocket[]
+): Promise<BaileysWhatsAppClientAdapter> {
+  const client = new BaileysWhatsAppClientAdapter({
     authDir: "unused-test-auth",
     authStateFactory: createAuthStateFactory(),
     socketFactory: createSocketFactory(sockets),

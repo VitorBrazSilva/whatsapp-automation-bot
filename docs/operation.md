@@ -14,6 +14,13 @@
 
 O servico registra eventos em JSON estruturado. Logs de `info` confirmam runs, aniversariantes encontrados, envios e reconexoes. Logs de `warn` indicam duplicidades evitadas, fallback de mensagem e estados recuperaveis. Logs de `error` indicam falhas de provedor, banco ou fluxo operacional.
 
+## Arquitetura operacional
+
+Os comandos e o scheduler entram pela camada `presentation` e chamam portas driver de
+`application`. Banco, WhatsApp, OpenAI, logger, metricas e health checks sao adapters em
+`infrastructure`. Ao alterar operacao, mantenha regras de negocio fora de controllers, CLIs e
+modulos Nest.
+
 ## HTTP operacional
 
 O NestJS expoe endpoints no host e porta configurados por `HTTP_HOST` e `HTTP_PORT`.

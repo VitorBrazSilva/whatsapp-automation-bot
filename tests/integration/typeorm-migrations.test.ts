@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { DataSource, type DataSourceOptions } from "typeorm";
-import { loadAppConfig } from "../../src/config/index.js";
+import { DuplicateMessageDeliveryError } from "../../src/automation/index.js";
 import { createTypeOrmOptions } from "../../src/database/index.js";
+import {
+  loadAppConfig,
+  MessageDeliveryEntity,
+  TypeOrmDeliveryLogService
+} from "../../src/infrastructure/index.js";
 
 describe("TypeORM migrations", () => {
   it("creates the multi-target schema and migrates legacy birthday data", async () => {
@@ -52,7 +57,66 @@ describe("TypeORM migrations", () => {
       await dataSource.destroy();
     }
   });
+
+  it("keeps sent delivery idempotency in the TypeORM delivery adapter", async () => {
+    const dataSource = await createMigratedDataSource();
+    try {
+      const deliveryLog = new TypeOrmDeliveryLogService(
+        dataSource.getRepository(MessageDeliveryEntity)
+      );
+      const input = {
+        automationRunId: null,
+        automationKey: "birthdays.daily",
+        targetJid: "family-group@g.us",
+        dedupeKey: "birthday:person-1:2026",
+        subjectRef: "person-1",
+        messageText: "Parabens, Ana!",
+        status: "sent" as const,
+        providerMessageId: "provider-1",
+        errorCode: null,
+        errorMessage: null
+      };
+
+      await deliveryLog.record(input);
+      await expect(
+        deliveryLog.record({
+          ...input,
+          providerMessageId: "provider-2"
+        })
+      ).rejects.toBeInstanceOf(DuplicateMessageDeliveryError);
+      await deliveryLog.record({
+        ...input,
+        status: "skipped",
+        providerMessageId: null,
+        errorCode: "DUPLICATE_SUCCESSFUL_DELIVERY"
+      });
+
+      expect(
+        await deliveryLog.hasSent({
+          automationKey: input.automationKey,
+          dedupeKey: input.dedupeKey,
+          targetJid: input.targetJid
+        })
+      ).toBe(true);
+    } finally {
+      await dataSource.destroy();
+    }
+  });
 });
+
+async function createMigratedDataSource(): Promise<DataSource> {
+  const dataSource = new DataSource(
+    createTypeOrmOptions(
+      loadAppConfig({
+        NODE_ENV: "test",
+        DATABASE_PATH: ":memory:"
+      })
+    ) as DataSourceOptions
+  );
+  await dataSource.initialize();
+  await dataSource.runMigrations();
+  return dataSource;
+}
 
 async function createLegacySchema(dataSource: DataSource): Promise<void> {
   await dataSource.query(`

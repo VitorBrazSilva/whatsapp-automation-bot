@@ -4,17 +4,16 @@ import {
   runMigrations,
   type SqliteDatabase
 } from "../../src/database/index.js";
-import { DefaultBirthdayService } from "../../src/domain/index.js";
+import { DefaultBirthdayService } from "../../src/application/index.js";
 import type { Person } from "../../src/domain/index.js";
 import {
   OpenAiMessageGenerator,
   type MessageGenerator,
   type OpenAiCreateResponseRequest,
   type OpenAiCreateResponseResult,
-  type OpenAiResponsesClient,
-  type SendResult,
-  type WhatsAppClient
-} from "../../src/integrations/index.js";
+  type OpenAiResponsesClient
+} from "../../src/infrastructure/ai/index.js";
+import type { SendResult, WhatsAppClient } from "../../src/infrastructure/whatsapp/index.js";
 import {
   SqliteBirthdayCheckRepository,
   SqliteDeliveryRepository,

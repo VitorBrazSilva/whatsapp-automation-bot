@@ -1,5 +1,9 @@
 import { startProcess } from "./process.js";
-import { JsonLogger, readErrorCode, readErrorMessage } from "./observability/index.js";
+import {
+  JsonLogger,
+  readErrorCode,
+  readErrorMessage
+} from "./infrastructure/observability/index.js";
 
 const logger = new JsonLogger();
 
