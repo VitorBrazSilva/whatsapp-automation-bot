@@ -20,8 +20,7 @@ export async function runDbMigrateCommand(
   const stdout = options.stdout ?? console.log;
   const context = await createCommandContext({
     env: options.env,
-    runMigrations: false,
-    ensureLegacyTargets: false
+    runMigrations: false
   });
   try {
     const applied = await new RunDatabaseMigrationsUseCase(

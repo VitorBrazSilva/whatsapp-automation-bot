@@ -87,8 +87,7 @@ describe("OpenAiMessageGenerator", () => {
       message: "Feliz aniversario, Ana! Que seu dia seja especial.",
       provider: "openai",
       model: "gpt-4.1-mini",
-      fallbackReason: null,
-      fallbackDetails: null
+      fallbackReason: null
     });
     expect(client.requests).toHaveLength(1);
     const payload = JSON.parse(client.requests[0]?.input[0]?.content[0]?.text ?? "{}") as {
@@ -159,11 +158,6 @@ describe("OpenAiMessageGenerator", () => {
 
     expect(result.provider).toBe("fallback");
     expect(result.fallbackReason).toBe("OPENAI_HTTP_500");
-    expect(result.fallbackDetails).toEqual({
-      status: 500,
-      statusText: "Internal Server Error",
-      requestId: "req-test-123"
-    });
   });
 });
 

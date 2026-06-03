@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import type { PersonRepositoryPort } from "../../../application/index.js";
+import type { PersonRepository } from "../../../application/index.js";
 import type { Person } from "../../../domain/index.js";
 import { PersonEntity } from "./entities/index.js";
 import {
@@ -14,7 +14,7 @@ import {
 export type CreatePersonInput = CreatePersonPersistenceInput;
 
 @Injectable()
-export class TypeOrmPersonRepository implements PersonRepositoryPort {
+export class TypeOrmPersonRepository implements PersonRepository {
   constructor(
     @InjectRepository(PersonEntity)
     private readonly people: Repository<PersonEntity>
@@ -29,6 +29,10 @@ export class TypeOrmPersonRepository implements PersonRepositoryPort {
   }
 
   async findBirthdaysByMonthDay(month: number, day: number): Promise<Person[]> {
+    return this.findActiveByBirthday(month, day);
+  }
+
+  async findActiveByBirthday(month: number, day: number): Promise<Person[]> {
     const rows = await this.people
       .createQueryBuilder("person")
       .where("person.active = :active", { active: true })

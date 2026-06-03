@@ -1,5 +1,5 @@
 services:
-  whatsapp-automation-bot:
+  birthday-whatsapp-bot:
     build: .
     restart: unless-stopped
     env_file:
@@ -7,17 +7,13 @@ services:
         required: false
     environment:
       NODE_ENV: production
-      APP_NAME: whatsapp-automation-bot
-      DATABASE_PATH: /app/data/whatsapp-automation.sqlite
+      APP_NAME: birthday-whatsapp-bot
+      DATABASE_PATH: /app/data/birthday-whatsapp.sqlite
       WHATSAPP_AUTH_DIR: /app/sessions/baileys
-      HTTP_HOST: 0.0.0.0
-      HTTP_PORT: 3000
     volumes:
-      - whatsapp-automation-data:/app/data
-      - whatsapp-automation-sessions:/app/sessions
-    ports:
-      - "127.0.0.1:3000:3000"
+      - birthday-whatsapp-data:/app/data
+      - birthday-whatsapp-sessions:/app/sessions
 
 volumes:
-  whatsapp-automation-data:
-  whatsapp-automation-sessions:
+  birthday-whatsapp-data:
+  birthday-whatsapp-sessions:

@@ -1,15 +1,10 @@
 export const DEFAULT_TIMEZONE = "America/Sao_Paulo";
 export const DEFAULT_DAILY_CHECK_TIME = "09:00";
-export const DEFAULT_APP_NAME = "whatsapp-automation-bot";
-export const DEFAULT_HTTP_HOST = "0.0.0.0";
-export const DEFAULT_HTTP_PORT = 3000;
-export const DEFAULT_DATABASE_PATH = "data/whatsapp-automation.sqlite";
+export const DEFAULT_APP_NAME = "birthday-whatsapp-bot";
+export const DEFAULT_DATABASE_PATH = "data/birthday-whatsapp.sqlite";
 export const DEFAULT_WHATSAPP_AUTH_DIR = "sessions/baileys";
 export const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
 export const DEFAULT_OPENAI_TIMEOUT_MS = 15000;
-export const DEFAULT_METRICS_ENABLED = false;
-export const DEFAULT_METRICS_HOST = "127.0.0.1";
-export const DEFAULT_METRICS_PORT = 9464;
 export const DEFAULT_SCHEDULER_ENABLED = true;
 
 export type RuntimeEnvironment = "development" | "test" | "production";
@@ -34,21 +29,8 @@ export interface AppConfig {
   databasePath: string;
   whatsappAuthDir: string;
   whatsappGroupId: string | null;
-  http: HttpConfig;
   openAi: OpenAiConfig;
   openAiApiKeyConfigured: boolean;
-  metrics: MetricsConfig;
-}
-
-export interface HttpConfig {
-  host: string;
-  port: number;
-}
-
-export interface MetricsConfig {
-  enabled: boolean;
-  host: string;
-  port: number;
 }
 
 export interface LoadAppConfigOptions {
@@ -89,10 +71,6 @@ export function loadAppConfig(
       DEFAULT_WHATSAPP_AUTH_DIR
     ),
     whatsappGroupId,
-    http: {
-      host: readRequiredText("HTTP_HOST", env.HTTP_HOST, DEFAULT_HTTP_HOST),
-      port: readPort("HTTP_PORT", env.HTTP_PORT, DEFAULT_HTTP_PORT)
-    },
     openAi: {
       apiKey: openAiApiKey === null ? null : createSecretValue(openAiApiKey),
       model: readRequiredText("OPENAI_MODEL", env.OPENAI_MODEL, DEFAULT_OPENAI_MODEL),
@@ -102,12 +80,7 @@ export function loadAppConfig(
         DEFAULT_OPENAI_TIMEOUT_MS
       )
     },
-    openAiApiKeyConfigured: openAiApiKey !== null,
-    metrics: {
-      enabled: readBoolean("METRICS_ENABLED", env.METRICS_ENABLED, DEFAULT_METRICS_ENABLED),
-      host: readRequiredText("METRICS_HOST", env.METRICS_HOST, DEFAULT_METRICS_HOST),
-      port: readPort("METRICS_PORT", env.METRICS_PORT, DEFAULT_METRICS_PORT)
-    }
+    openAiApiKeyConfigured: openAiApiKey !== null
   };
 }
 
@@ -179,14 +152,6 @@ function readPositiveInteger(name: string, value: string | undefined, fallback: 
     return numberValue;
   }
   throw new ConfigError(`${name} must be a positive integer.`);
-}
-
-function readPort(name: string, value: string | undefined, fallback: number): number {
-  const port = readPositiveInteger(name, value, fallback);
-  if (port <= 65535) {
-    return port;
-  }
-  throw new ConfigError(`${name} must be a valid TCP port.`);
 }
 
 function readBoolean(name: string, value: string | undefined, fallback: boolean): boolean {

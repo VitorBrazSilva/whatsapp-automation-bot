@@ -1,15 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { DataSource, type DataSourceOptions } from "typeorm";
-import { DuplicateMessageDeliveryError } from "../../src/automation/index.js";
 import { createTypeOrmOptions } from "../../src/database/index.js";
-import {
-  loadAppConfig,
-  MessageDeliveryEntity,
-  TypeOrmDeliveryLogService
-} from "../../src/infrastructure/index.js";
+import { loadAppConfig } from "../../src/infrastructure/index.js";
 
 describe("TypeORM migrations", () => {
-  it("creates the multi-target schema and migrates legacy birthday data", async () => {
+  it("creates the simplified birthday schema and migrates legacy birthday data", async () => {
     const dataSource = new DataSource(
       createTypeOrmOptions(
         loadAppConfig({
@@ -24,98 +19,48 @@ describe("TypeORM migrations", () => {
       await createLegacySchema(dataSource);
       await dataSource.runMigrations();
 
-      const runs = await dataSource.query("SELECT * FROM automation_runs");
-      const deliveries = await dataSource.query("SELECT * FROM message_deliveries");
-      const indexes = await dataSource.query("PRAGMA index_list('message_deliveries')");
+      const deliveries = await dataSource.query("SELECT * FROM birthday_deliveries");
+      const indexes = await dataSource.query("PRAGMA index_list('birthday_deliveries')");
+      const legacyTables = await listLegacyTables(dataSource);
 
-      expect(runs).toMatchObject([
-        {
-          id: "check-1",
-          automation_key: "birthdays.daily",
-          trigger: "manual",
-          target_date: "2026-05-26",
-          status: "completed",
-          items_matched: 1
-        }
-      ]);
       expect(deliveries).toMatchObject([
         {
           id: "delivery-1",
-          automation_key: "birthdays.daily",
-          target_jid: "family-group@g.us",
-          dedupe_key: "birthday:person-1:2026",
-          subject_ref: "person-1",
-          status: "sent"
+          person_id: "person-1",
+          group_jid: "family-group@g.us",
+          birthday_year: 2026,
+          message_text: "Parabens, Ana!",
+          status: "sent",
+          provider: "legacy"
         }
       ]);
       expect(
         indexes.some(
-          (index: { name: string }) => index.name === "idx_message_deliveries_unique_sent"
+          (index: { name: string }) => index.name === "idx_birthday_deliveries_unique_sent"
         )
       ).toBe(true);
-    } finally {
-      await dataSource.destroy();
-    }
-  });
-
-  it("keeps sent delivery idempotency in the TypeORM delivery adapter", async () => {
-    const dataSource = await createMigratedDataSource();
-    try {
-      const deliveryLog = new TypeOrmDeliveryLogService(
-        dataSource.getRepository(MessageDeliveryEntity)
-      );
-      const input = {
-        automationRunId: null,
-        automationKey: "birthdays.daily",
-        targetJid: "family-group@g.us",
-        dedupeKey: "birthday:person-1:2026",
-        subjectRef: "person-1",
-        messageText: "Parabens, Ana!",
-        status: "sent" as const,
-        providerMessageId: "provider-1",
-        errorCode: null,
-        errorMessage: null
-      };
-
-      await deliveryLog.record(input);
-      await expect(
-        deliveryLog.record({
-          ...input,
-          providerMessageId: "provider-2"
-        })
-      ).rejects.toBeInstanceOf(DuplicateMessageDeliveryError);
-      await deliveryLog.record({
-        ...input,
-        status: "skipped",
-        providerMessageId: null,
-        errorCode: "DUPLICATE_SUCCESSFUL_DELIVERY"
-      });
-
-      expect(
-        await deliveryLog.hasSent({
-          automationKey: input.automationKey,
-          dedupeKey: input.dedupeKey,
-          targetJid: input.targetJid
-        })
-      ).toBe(true);
+      expect(legacyTables).toEqual([]);
     } finally {
       await dataSource.destroy();
     }
   });
 });
 
-async function createMigratedDataSource(): Promise<DataSource> {
-  const dataSource = new DataSource(
-    createTypeOrmOptions(
-      loadAppConfig({
-        NODE_ENV: "test",
-        DATABASE_PATH: ":memory:"
-      })
-    ) as DataSourceOptions
-  );
-  await dataSource.initialize();
-  await dataSource.runMigrations();
-  return dataSource;
+async function listLegacyTables(dataSource: DataSource): Promise<string[]> {
+  const rows = (await dataSource.query(`
+    SELECT name FROM sqlite_master
+    WHERE type = 'table'
+      AND name IN (
+        'automation_runs',
+        'automation_targets',
+        'whatsapp_targets',
+        'message_deliveries',
+        'birthday_checks',
+        'delivery_attempts'
+      )
+    ORDER BY name
+  `)) as Array<{ name: string }>;
+  return rows.map((row) => row.name);
 }
 
 async function createLegacySchema(dataSource: DataSource): Promise<void> {

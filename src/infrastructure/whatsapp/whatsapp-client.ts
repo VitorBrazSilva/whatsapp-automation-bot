@@ -1,17 +1,12 @@
-import type {
-  SendResult,
-  WhatsAppClientPort,
-  WhatsAppGroup,
-  WhatsAppGroupListerPort
-} from "../../application/index.js";
+import type { SendResult, WhatsAppGroup, WhatsAppGroupMessenger } from "../../application/index.js";
 
 export type { SendResult, WhatsAppGroup };
 
-export interface WhatsAppClient extends WhatsAppClientPort {
-  connect(): Promise<void>;
+export interface WhatsAppClient extends WhatsAppGroupMessenger {
+  onReady(handler: () => Promise<void>): void;
 }
 
-export type WhatsAppGroupLister = WhatsAppGroupListerPort;
+export type WhatsAppGroupLister = Pick<WhatsAppGroupMessenger, "listGroups">;
 
 export class WhatsAppSendError extends Error {
   readonly code: string;

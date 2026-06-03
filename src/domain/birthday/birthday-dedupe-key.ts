@@ -19,3 +19,32 @@ export class BirthdayDedupeKey {
 export function createBirthdayDedupeKey(personId: string, birthdayYear: number): string {
   return BirthdayDedupeKey.create(personId, birthdayYear).toString();
 }
+
+export interface BirthdayDeliveryKey {
+  personId: string;
+  groupJid: string;
+  birthdayYear: number;
+}
+
+export function createBirthdayDeliveryKey(input: BirthdayDeliveryKey): BirthdayDeliveryKey {
+  const personId = input.personId.trim();
+  const groupJid = input.groupJid.trim();
+  if (personId.length === 0) {
+    throw new Error("Person id is required to create a birthday delivery key.");
+  }
+  if (!groupJid.endsWith("@g.us")) {
+    throw new Error("Group JID must be a WhatsApp group JID.");
+  }
+  if (!Number.isInteger(input.birthdayYear) || input.birthdayYear < 1900) {
+    throw new Error("Birthday year must be a valid year.");
+  }
+  return {
+    personId,
+    groupJid,
+    birthdayYear: input.birthdayYear
+  };
+}
+
+export function formatBirthdayDeliveryKey(input: BirthdayDeliveryKey): string {
+  return `${input.personId}:${input.groupJid}:${input.birthdayYear}`;
+}

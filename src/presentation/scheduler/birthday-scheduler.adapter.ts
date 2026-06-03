@@ -1,14 +1,10 @@
 import { Inject, Injectable, OnApplicationBootstrap, OnApplicationShutdown } from "@nestjs/common";
 import { SchedulerRegistry } from "@nestjs/schedule";
-import { AUTOMATION_RUNNER, type AutomationRunner } from "../../automation/index.js";
-import { BIRTHDAY_AUTOMATION_KEY } from "../../domain/index.js";
+import type { RunBirthdayReminderUseCasePort } from "../../application/index.js";
 import {
   APP_CONFIG,
-  STRUCTURED_LOGGER,
-  readErrorCode,
-  readErrorMessage,
-  type AppConfig,
-  type StructuredLogger
+  RUN_BIRTHDAY_REMINDER_USE_CASE,
+  type AppConfig
 } from "../../infrastructure/index.js";
 import { getNextDailyRunAt } from "./schedule-time.js";
 
@@ -19,12 +15,10 @@ export class BirthdaySchedulerService implements OnApplicationBootstrap, OnAppli
   constructor(
     @Inject(SchedulerRegistry)
     private readonly schedulerRegistry: SchedulerRegistry,
-    @Inject(AUTOMATION_RUNNER)
-    private readonly automationRunner: AutomationRunner,
+    @Inject(RUN_BIRTHDAY_REMINDER_USE_CASE)
+    private readonly reminder: RunBirthdayReminderUseCasePort,
     @Inject(APP_CONFIG)
-    private readonly config: AppConfig,
-    @Inject(STRUCTURED_LOGGER)
-    private readonly logger: StructuredLogger
+    private readonly config: AppConfig
   ) {}
 
   onApplicationBootstrap(): void {
@@ -46,18 +40,19 @@ export class BirthdaySchedulerService implements OnApplicationBootstrap, OnAppli
     const now = new Date();
     const nextRunAt = getNextDailyRunAt(now, this.config.timezone, this.config.dailyCheckTime);
     const delayMs = Math.max(0, nextRunAt.getTime() - now.getTime());
-    const timeoutName = `${BIRTHDAY_AUTOMATION_KEY}.${nextRunAt.toISOString()}`;
+    const timeoutName = `birthday-reminder.${nextRunAt.toISOString()}`;
     const timeout = setTimeout(() => {
       void this.runScheduledCheck();
     }, delayMs);
     this.timeoutName = timeoutName;
     this.schedulerRegistry.addTimeout(timeoutName, timeout);
-    this.logger.info({
-      event: "automation.scheduler.scheduled",
-      automation: BIRTHDAY_AUTOMATION_KEY,
-      nextRunAt: nextRunAt.toISOString(),
-      timezone: this.config.timezone
-    });
+    console.info(
+      JSON.stringify({
+        event: "birthday.scheduler.scheduled",
+        nextRunAt: nextRunAt.toISOString(),
+        timezone: this.config.timezone
+      })
+    );
   }
 
   private async runScheduledCheck(): Promise<void> {
@@ -66,16 +61,49 @@ export class BirthdaySchedulerService implements OnApplicationBootstrap, OnAppli
       this.timeoutName = null;
     }
     try {
-      await this.automationRunner.run(BIRTHDAY_AUTOMATION_KEY, "scheduled", new Date());
-    } catch (error) {
-      this.logger.error({
-        event: "automation.scheduler.failed",
-        automation: BIRTHDAY_AUTOMATION_KEY,
-        errorCode: readErrorCode(error),
-        errorMessage: readErrorMessage(error)
+      const result = await this.reminder.execute({
+        trigger: "scheduled",
+        now: new Date()
       });
+      console.info(
+        JSON.stringify({
+          event: "birthday.scheduler.completed",
+          ...result
+        })
+      );
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "birthday.scheduler.failed",
+          errorCode: readErrorCode(error),
+          errorMessage: readErrorMessage(error)
+        })
+      );
     } finally {
       this.scheduleNext();
     }
   }
+}
+
+function readErrorCode(error: unknown): string {
+  if (isCodeError(error)) {
+    return error.code;
+  }
+  if (error instanceof Error) {
+    return error.name;
+  }
+  return "UNKNOWN_ERROR";
+}
+
+function readErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message.replace(/\s+/g, " ").trim();
+  }
+  return "Unknown error.";
+}
+
+function isCodeError(error: unknown): error is { code: string } {
+  return (
+    typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+  );
 }

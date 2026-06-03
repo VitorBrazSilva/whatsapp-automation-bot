@@ -1,4 +1,4 @@
-import { runCheckTodayCommand } from "./check-today-command.js";
+import { runCheckTodayCommand } from "../presentation/cli/index.js";
 
 try {
   await runCheckTodayCommand();

@@ -1,1 +1,1 @@
-export * from "./run-birthday-automation-use-case.js";
+export * from "./run-birthday-reminder-use-case.js";

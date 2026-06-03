@@ -1,27 +1,85 @@
 import { Module } from "@nestjs/common";
-import { AiModule } from "../../ai/index.js";
-import { AutomationModule } from "../../automation/index.js";
-import { BirthdayAutomationModule } from "../../birthday-automation/index.js";
+import { ScheduleModule } from "@nestjs/schedule";
+import { TypeOrmModule } from "@nestjs/typeorm";
+import {
+  RunBirthdayReminderUseCase,
+  type BirthdayDeliveryRepository,
+  type BirthdayMessageGenerator,
+  type PersonRepository,
+  type WhatsAppGroupMessenger
+} from "../../application/index.js";
 import { DatabaseModule } from "../../database/index.js";
-import { HealthModule } from "../../presentation/health/index.js";
-import { MetricsModule } from "../../presentation/metrics/index.js";
-import { TargetsModule } from "../../targets/index.js";
-import { WhatsappModule } from "../../whatsapp/index.js";
-import { AutomationConfigModule } from "../config/index.js";
-import { ObservabilityModule } from "../observability/index.js";
+import { BirthdaySchedulerService } from "../../presentation/scheduler/index.js";
+import { OpenAiMessageGeneratorAdapter } from "../ai/index.js";
+import { APP_CONFIG, AppConfigModule, type AppConfig } from "../config/index.js";
+import {
+  BirthdayDeliveryEntity,
+  PersonEntity,
+  TypeOrmBirthdayDeliveryRepository,
+  TypeOrmPersonRepository
+} from "../persistence/typeorm/index.js";
+import { BaileysWhatsAppClientAdapter } from "../whatsapp/index.js";
+import {
+  BIRTHDAY_MESSAGE_GENERATOR,
+  RUN_BIRTHDAY_REMINDER_USE_CASE,
+  WHATSAPP_CLIENT
+} from "./tokens.js";
 
 @Module({
   imports: [
-    AutomationConfigModule,
+    AppConfigModule,
     DatabaseModule,
-    ObservabilityModule,
-    MetricsModule,
-    HealthModule,
-    TargetsModule,
-    WhatsappModule,
-    AutomationModule,
-    AiModule,
-    BirthdayAutomationModule
-  ]
+    ScheduleModule.forRoot(),
+    TypeOrmModule.forFeature([BirthdayDeliveryEntity, PersonEntity])
+  ],
+  providers: [
+    TypeOrmBirthdayDeliveryRepository,
+    TypeOrmPersonRepository,
+    {
+      provide: BIRTHDAY_MESSAGE_GENERATOR,
+      inject: [APP_CONFIG],
+      useFactory: (config: AppConfig): BirthdayMessageGenerator =>
+        new OpenAiMessageGeneratorAdapter({
+          apiKey: config.openAi.apiKey?.reveal(),
+          model: config.openAi.model,
+          timeoutMs: config.openAi.timeoutMs
+        })
+    },
+    {
+      provide: WHATSAPP_CLIENT,
+      inject: [APP_CONFIG],
+      useFactory: (config: AppConfig): WhatsAppGroupMessenger =>
+        new BaileysWhatsAppClientAdapter({
+          authDir: config.whatsappAuthDir
+        })
+    },
+    {
+      provide: RUN_BIRTHDAY_REMINDER_USE_CASE,
+      inject: [
+        APP_CONFIG,
+        TypeOrmPersonRepository,
+        TypeOrmBirthdayDeliveryRepository,
+        BIRTHDAY_MESSAGE_GENERATOR,
+        WHATSAPP_CLIENT
+      ],
+      useFactory: (
+        config: AppConfig,
+        people: PersonRepository,
+        deliveries: BirthdayDeliveryRepository,
+        messageGenerator: BirthdayMessageGenerator,
+        whatsapp: WhatsAppGroupMessenger
+      ): RunBirthdayReminderUseCase =>
+        new RunBirthdayReminderUseCase({
+          timezone: config.timezone,
+          groupJid: config.whatsappGroupId ?? "",
+          people,
+          deliveries,
+          messageGenerator,
+          whatsapp
+        })
+    },
+    BirthdaySchedulerService
+  ],
+  exports: [RUN_BIRTHDAY_REMINDER_USE_CASE, WHATSAPP_CLIENT]
 })
 export class AppCompositionModule {}

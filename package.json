@@ -1,12 +1,12 @@
 {
-  "name": "whatsapp-automation-bot",
+  "name": "birthday-whatsapp-bot",
   "version": "1.0.0",
-  "description": "Personal WhatsApp automation service with birthday workflows.",
+  "description": "Personal WhatsApp birthday reminder service.",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/main.js",
   "scripts": {
-    "dev": "tsx src/index.ts",
-    "start": "node dist/index.js",
+    "dev": "tsx src/main.ts",
+    "start": "node dist/main.js",
     "build": "tsc -p tsconfig.json",
     "check": "npm run lint && npm run build && npm test",
     "lint": "eslint .",
@@ -18,15 +18,10 @@
     "db:migrate": "node dist/cli/db-migrate.js",
     "db:migrate:dev": "tsx src/cli/db-migrate.ts",
     "whatsapp:list-groups": "tsx src/cli/list-groups.ts",
-    "targets:add": "tsx src/cli/targets-add.ts",
-    "targets:list": "tsx src/cli/targets-list.ts",
-    "birthdays:check-today": "tsx src/cli/check-today.ts",
-    "check:today": "tsx src/cli/check-today.ts",
-    "list:groups": "tsx src/cli/list-groups.ts"
+    "birthdays:check-today": "tsx src/cli/check-today.ts"
   },
   "keywords": [
     "whatsapp",
-    "automation",
     "birthday",
     "bot"
   ],
@@ -38,7 +33,6 @@
     "@types/node": "^20.11.30",
     "@types/qrcode-terminal": "^0.12.2",
     "@types/sql.js": "^1.4.11",
-    "@types/supertest": "^7.2.0",
     "eslint": "^9.39.4",
     "prettier": "^3.8.3",
     "tsx": "^4.22.3",
@@ -50,9 +44,7 @@
     "@nestjs/common": "^11.1.24",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.1.24",
-    "@nestjs/platform-express": "^11.1.24",
     "@nestjs/schedule": "^6.1.3",
-    "@nestjs/terminus": "^11.1.1",
     "@nestjs/typeorm": "^11.0.1",
     "baileys": "^7.0.0-rc13",
     "pino": "^10.3.1",
@@ -60,7 +52,6 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "sql.js": "^1.14.1",
-    "supertest": "^7.2.2",
     "typeorm": "^0.3.28"
   }
 }

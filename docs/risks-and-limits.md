@@ -7,10 +7,10 @@ O servico usa Baileys via WhatsApp Web/Linked Devices. Essa integracao nao e uma
 Mitigacoes:
 
 - Uso pessoal e baixo volume.
-- Targets por automacao, sem envio em massa.
+- Um unico grupo configurado por `WHATSAPP_GROUP_ID`, sem envio em massa.
 - Recuperacao no startup e na reconexao.
-- Idempotencia por automacao, pessoa/ano e destino para evitar duplicidades.
-- Logs estruturados para diagnostico.
+- Idempotencia por pessoa/grupo/ano para evitar duplicidades.
+- Logs JSON simples para diagnostico.
 
 ## OpenAI paga
 

@@ -1,16 +1,14 @@
 import type { INestApplicationContext } from "@nestjs/common";
-import {
-  AUTOMATION_RUNNER,
-  type AutomationRunResult,
-  type AutomationRunner
-} from "../../automation/index.js";
-import { BIRTHDAY_AUTOMATION_KEY } from "../../domain/index.js";
-import type { WhatsAppClient } from "../../infrastructure/index.js";
-import { WHATSAPP_CLIENT } from "../../whatsapp/index.js";
+import { RUN_BIRTHDAY_REMINDER_USE_CASE, WHATSAPP_CLIENT } from "../../infrastructure/index.js";
+import type {
+  BirthdayReminderResult,
+  RunBirthdayReminderUseCasePort,
+  WhatsAppGroupMessenger
+} from "../../application/index.js";
 import { createCommandContext } from "./application-context.js";
 
 export interface CheckTodayCommandResult {
-  result: AutomationRunResult;
+  result: BirthdayReminderResult;
 }
 
 export interface CheckTodayCommandOptions {
@@ -27,11 +25,14 @@ export async function runCheckTodayCommand(
   const context = options.context ?? (await createCommandContext({ env: options.env }));
   const ownsContext = options.context === undefined;
   try {
-    const whatsappClient = context.get<WhatsAppClient>(WHATSAPP_CLIENT);
+    const whatsappClient = context.get<WhatsAppGroupMessenger>(WHATSAPP_CLIENT);
     await whatsappClient.connect();
     const result = await context
-      .get<AutomationRunner>(AUTOMATION_RUNNER)
-      .run(BIRTHDAY_AUTOMATION_KEY, "manual", options.now ?? new Date());
+      .get<RunBirthdayReminderUseCasePort>(RUN_BIRTHDAY_REMINDER_USE_CASE)
+      .execute({
+        trigger: "manual",
+        now: options.now ?? new Date()
+      });
     stdout(
       JSON.stringify({
         event: "birthdays.check_today.completed",
@@ -42,9 +43,7 @@ export async function runCheckTodayCommand(
     return { result };
   } finally {
     if (ownsContext) {
-      await (
-        context.get<WhatsAppClient>(WHATSAPP_CLIENT) as { close?: () => Promise<void> }
-      ).close?.();
+      await context.get<WhatsAppGroupMessenger>(WHATSAPP_CLIENT).close();
       await context.close();
     }
   }

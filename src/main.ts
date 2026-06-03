@@ -1,11 +1,16 @@
 import "reflect-metadata";
-import { NestFactory } from "@nestjs/core";
-import { AppModule } from "./app.module.js";
-import { APP_CONFIG, type AppConfig } from "./infrastructure/config/index.js";
+import { startProcess } from "./process.js";
+import { readErrorCode, readErrorMessage } from "./infrastructure/index.js";
 
-export async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { logger: false });
-  const config = app.get<AppConfig>(APP_CONFIG);
-  app.enableShutdownHooks();
-  await app.listen(config.http.port, config.http.host);
+try {
+  await startProcess();
+} catch (error) {
+  console.error(
+    JSON.stringify({
+      event: "app.start_failed",
+      errorCode: readErrorCode(error),
+      errorMessage: readErrorMessage(error)
+    })
+  );
+  process.exitCode = 1;
 }

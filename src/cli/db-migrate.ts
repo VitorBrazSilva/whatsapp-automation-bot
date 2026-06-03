@@ -1,4 +1,4 @@
-import { runDbMigrateCommand } from "./db-migrate-command.js";
+import { runDbMigrateCommand } from "../presentation/cli/index.js";
 
 try {
   await runDbMigrateCommand();

@@ -1,10 +1,10 @@
 import type {
-  GeneratedMessage,
-  MessageGeneratorPort as MessageGenerator
+  BirthdayMessageGenerator as MessageGenerator,
+  GeneratedBirthdayMessage
 } from "../../application/index.js";
 import type { BirthdayMessageInput } from "../../domain/index.js";
 
-export type { BirthdayMessageInput, GeneratedMessage, MessageGenerator };
+export type { BirthdayMessageInput, GeneratedBirthdayMessage, MessageGenerator };
 
 export interface OpenAiFallbackDetails {
   status: number | null;

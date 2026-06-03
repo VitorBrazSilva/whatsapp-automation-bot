@@ -1,4 +1,4 @@
-import { runListGroupsCommand } from "./list-groups-command.js";
+import { runListGroupsCommand } from "../presentation/cli/index.js";
 
 try {
   await runListGroupsCommand();

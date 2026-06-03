@@ -1,28 +1,28 @@
-# WhatsApp Automation Bot
+# Birthday WhatsApp Bot
 
-Servico pessoal em Node.js + TypeScript + NestJS para automacoes de WhatsApp. A automacao inicial envia mensagens de aniversario para um ou mais grupos, usando SQLite local, Baileys via WhatsApp Web/Linked Devices e OpenAI opcional com fallback local seguro.
+Servico pessoal em Node.js + TypeScript + NestJS para enviar lembretes de aniversario a um grupo de WhatsApp configurado. O bot le aniversariantes no SQLite, gera uma mensagem pela OpenAI quando possivel e usa fallback local quando a API falha ou nao esta configurada.
 
 ## Arquitetura
 
-O codigo segue Clean Architecture/Hexagonal sem CQRS ou Event Sourcing. `src/domain/` concentra
-regras puras de aniversario, automacao e targets. `src/application/` contem portas e use cases.
-`src/infrastructure/` implementa adapters driven para TypeORM, Baileys, OpenAI, configuracao,
-observabilidade e composition root NestJS. `src/presentation/` contem adapters driver para CLI,
-scheduler, health e metrics. Modulos Nest de compatibilidade permanecem apenas como composition
-root/transicao; novas regras de negocio devem entrar no dominio ou nos use cases.
+O codigo segue Clean Architecture/Hexagonal em escala pequena:
+
+- `src/domain/birthday`: regras puras de data, deduplicacao e mensagem.
+- `src/application/run-birthday-reminder`: caso de uso unico do lembrete diario.
+- `src/application/ports`: contratos para pessoas, entregas, mensagem, WhatsApp e migrations.
+- `src/infrastructure`: TypeORM/SQLite, Baileys, OpenAI, configuracao e composition root NestJS.
+- `src/presentation`: CLI e scheduler.
+
+Nao ha API HTTP, health endpoint, metricas Prometheus, targets por automacao ou plataforma generica de automacoes.
 
 ## Comandos
 
+- `npm run dev`: inicia o processo continuo com scheduler.
+- `npm run build`: compila TypeScript em `dist/`.
+- `npm start`: executa `dist/main.js`.
 - `npm run db:migrate`: aplica migrations TypeORM no SQLite.
 - `npm run whatsapp:list-groups`: conecta no WhatsApp e lista grupos.
-- `npm run targets:add -- birthdays.daily <groupJid>`: vincula um grupo a automacao de aniversarios.
-- `npm run targets:list -- birthdays.daily`: lista destinos configurados.
-- `npm run birthdays:check-today`: executa a automacao de aniversarios manualmente.
-- `npm run dev`: inicia o servico NestJS continuo em desenvolvimento.
-- `npm run build && npm start`: compila e inicia o servico em producao.
+- `npm run birthdays:check-today`: executa manualmente o envio do dia.
 - `npm run check`: executa lint, build e testes.
-
-Os aliases antigos `npm run list:groups` e `npm run check:today` continuam disponiveis durante a transicao.
 
 ## Configuracao
 
@@ -30,18 +30,12 @@ Copie `.env.example` para `.env` e preencha:
 
 - `DATABASE_PATH`: caminho do SQLite.
 - `WHATSAPP_AUTH_DIR`: pasta persistente da sessao Baileys.
-- `WHATSAPP_GROUP_ID`: compatibilidade inicial para popular `birthdays.daily` com um grupo.
-- `OPENAI_API_KEY`: chave OpenAI paga. Sem chave, a geracao cai no fallback local.
-- `HTTP_HOST` e `HTTP_PORT`: host e porta dos endpoints NestJS.
-- `METRICS_ENABLED`: `true` para expor metricas Prometheus em `/metrics`.
+- `WHATSAPP_GROUP_ID`: JID do grupo de WhatsApp que recebera as mensagens.
+- `OPENAI_API_KEY`: chave OpenAI. Sem chave, a geracao usa fallback local.
+- `OPENAI_MODEL`: modelo usado na Responses API.
+- `APP_TIMEZONE` e `DAILY_CHECK_TIME`: fuso e horario do agendamento diario.
 
 Nunca versione `.env`, banco SQLite, backups, logs com dados pessoais ou sessao Baileys.
-
-## Endpoints
-
-- `GET /health/live`
-- `GET /health/ready`
-- `GET /metrics`
 
 ## Documentacao Operacional
 

@@ -7,8 +7,8 @@ O backup e manual e intencional. Evite sincronizacao automatica para servicos de
 Com Docker Compose:
 
 ```bash
-docker compose stop whatsapp-automation-bot
-docker run --rm -v my_bot_wpp_whatsapp-automation-data:/data -v "$PWD/backups:/backup" alpine sh -c "cp /data/whatsapp-automation.sqlite /backup/whatsapp-automation-$(date +%Y%m%d-%H%M%S).sqlite"
+docker compose stop birthday-whatsapp-bot
+docker run --rm -v my_bot_wpp_birthday-whatsapp-data:/data -v "$PWD/backups:/backup" alpine sh -c "cp /data/birthday-whatsapp.sqlite /backup/birthday-whatsapp-$(date +%Y%m%d-%H%M%S).sqlite"
 docker compose up -d
 ```
 
@@ -39,4 +39,4 @@ Cuidados:
 - Em caso de suspeita de vazamento, remova o dispositivo vinculado no WhatsApp e apague a pasta da sessao.
 - Se o cliente ficar `logged_out`, apague a sessao persistida e rode `npm run whatsapp:list-groups` ou suba o servico para parear novamente.
 
-Em Docker Compose, a sessao fica no volume `whatsapp-automation-sessions`.
+Em Docker Compose, a sessao fica no volume `birthday-whatsapp-sessions`.

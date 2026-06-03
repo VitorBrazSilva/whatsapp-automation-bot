@@ -2,11 +2,7 @@ import { Injectable, Module, OnApplicationShutdown } from "@nestjs/common";
 import { InjectDataSource, TypeOrmModule } from "@nestjs/typeorm";
 import { DataSource, type Migration } from "typeorm";
 import type { DatabaseMigrationPort } from "../application/index.js";
-import {
-  APP_CONFIG,
-  AutomationConfigModule,
-  type AppConfig
-} from "../infrastructure/config/index.js";
+import { APP_CONFIG, AppConfigModule, type AppConfig } from "../infrastructure/config/index.js";
 import { DATABASE_MIGRATION_PORT } from "../infrastructure/tokens.js";
 import { createTypeOrmOptions } from "./typeorm-options.js";
 
@@ -33,7 +29,7 @@ class DatabaseShutdownService implements OnApplicationShutdown {
 @Module({
   imports: [
     TypeOrmModule.forRootAsync({
-      imports: [AutomationConfigModule],
+      imports: [AppConfigModule],
       inject: [APP_CONFIG],
       useFactory: (config: AppConfig) => createTypeOrmOptions(config)
     })

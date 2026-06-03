@@ -2,63 +2,55 @@ import type { INestApplicationContext } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { describe, expect, it } from "vitest";
 import { AppModule } from "../../src/app.module.js";
-import { BIRTHDAY_MESSAGE_GENERATOR } from "../../src/ai/index.js";
-import { AUTOMATION_RUNNER, type AutomationRunner } from "../../src/automation/index.js";
+import type {
+  BirthdayMessageGenerator,
+  RunBirthdayReminderUseCasePort,
+  WhatsAppGroup,
+  WhatsAppGroupMessenger
+} from "../../src/application/index.js";
+import { DatabaseMigrationService } from "../../src/database/index.js";
+import type { BirthdayMessageInput } from "../../src/domain/index.js";
+import {
+  BIRTHDAY_MESSAGE_GENERATOR,
+  RUN_BIRTHDAY_REMINDER_USE_CASE,
+  TypeOrmPersonRepository,
+  WHATSAPP_CLIENT
+} from "../../src/infrastructure/index.js";
 import { runCheckTodayCommand } from "../../src/presentation/cli/check-today-command.js";
 import { runDbMigrateCommand } from "../../src/presentation/cli/db-migrate-command.js";
 import { runListGroupsCommand } from "../../src/presentation/cli/list-groups-command.js";
-import { runTargetsAddCommand } from "../../src/presentation/cli/targets-add-command.js";
-import { runTargetsListCommand } from "../../src/presentation/cli/targets-list-command.js";
-import { DatabaseMigrationService } from "../../src/database/index.js";
-import { BIRTHDAY_AUTOMATION_KEY, type Person } from "../../src/domain/index.js";
-import type { MessageGenerator } from "../../src/infrastructure/ai/index.js";
-import { TargetsService, TypeOrmPersonRepository } from "../../src/infrastructure/index.js";
-import type {
-  SendResult,
-  WhatsAppClient,
-  WhatsAppGroup
-} from "../../src/infrastructure/whatsapp/index.js";
-import { WHATSAPP_CLIENT } from "../../src/whatsapp/index.js";
 import { startProcess } from "../../src/process.js";
 
 const now = new Date("2026-05-26T12:00:00.000Z");
-const groupId = "family-group@g.us";
+const groupJid = "family-group@g.us";
 const env = {
   NODE_ENV: "test",
   APP_TIMEZONE: "America/Sao_Paulo",
   DAILY_CHECK_TIME: "09:00",
   DATABASE_PATH: ":memory:",
   WHATSAPP_AUTH_DIR: "unused-test-auth",
-  WHATSAPP_GROUP_ID: groupId,
+  WHATSAPP_GROUP_ID: groupJid,
   OPENAI_API_KEY: "test-key",
   SCHEDULER_ENABLED: "false"
 };
 
 describe("operational flow", () => {
-  it("runs the birthday automation through the Nest application context", async () => {
+  it("runs the birthday reminder through the Nest application context", async () => {
     const whatsapp = new FakeWhatsAppClient();
     const context = await createTestContext(whatsapp);
     await seedBirthdayPerson(context);
-    await context.get(TargetsService).ensureLegacyBirthdayTarget();
-    await context.get(TargetsService).addGroupTarget("birthdays.daily", "friends@g.us", "Friends");
 
     const result = await context
-      .get<AutomationRunner>(AUTOMATION_RUNNER)
-      .run(BIRTHDAY_AUTOMATION_KEY, "manual", now);
+      .get<RunBirthdayReminderUseCasePort>(RUN_BIRTHDAY_REMINDER_USE_CASE)
+      .execute({ now, trigger: "manual" });
 
-    expect(result).toMatchObject({
-      itemsMatched: 1,
-      deliveriesSent: 2,
-      duplicateSkips: 0,
-      failures: 0
+    expect(result).toEqual({
+      peopleMatched: 1,
+      sent: 1,
+      skipped: 0,
+      failed: 0
     });
-    expect(whatsapp.sentMessages).toHaveLength(2);
-    expect(whatsapp.sentMessages).toEqual(
-      expect.arrayContaining([
-        { groupId, text: "Parabens, Ana!" },
-        { groupId: "friends@g.us", text: "Parabens, Ana!" }
-      ])
-    );
+    expect(whatsapp.sentMessages).toEqual([{ groupJid, text: "Parabens, Ana!" }]);
     await context.close();
   });
 
@@ -67,7 +59,6 @@ describe("operational flow", () => {
     const context = await createTestContext(whatsapp);
     const output: string[] = [];
     await seedBirthdayPerson(context);
-    await context.get(TargetsService).ensureLegacyBirthdayTarget();
 
     const command = await runCheckTodayCommand({
       context,
@@ -75,11 +66,11 @@ describe("operational flow", () => {
       stdout: (line) => output.push(line)
     });
 
-    expect(command.result).toMatchObject({
-      itemsMatched: 1,
-      deliveriesSent: 1,
-      duplicateSkips: 0,
-      failures: 0
+    expect(command.result).toEqual({
+      peopleMatched: 1,
+      sent: 1,
+      skipped: 0,
+      failed: 0
     });
     expect(whatsapp.connected).toBe(true);
     expect(JSON.parse(output[0] ?? "{}")).toMatchObject({
@@ -109,31 +100,6 @@ describe("operational flow", () => {
     await context.close();
   });
 
-  it("adds and lists targets through CLI commands", async () => {
-    const context = await createTestContext(new FakeWhatsAppClient());
-    const output: string[] = [];
-
-    await runTargetsAddCommand({
-      context,
-      args: ["birthdays.daily", "friends@g.us", "Friends"],
-      stdout: (line) => output.push(line)
-    });
-    const result = await runTargetsListCommand({
-      context,
-      args: ["birthdays.daily"],
-      stdout: (line) => output.push(line)
-    });
-
-    expect(result.targets).toHaveLength(1);
-    expect(result.targets[0]).toMatchObject({
-      automationKey: "birthdays.daily",
-      targetJid: "friends@g.us",
-      displayName: "Friends",
-      active: true
-    });
-    await context.close();
-  });
-
   it("runs db:migrate through a Nest application context", async () => {
     const output: string[] = [];
 
@@ -142,10 +108,10 @@ describe("operational flow", () => {
       stdout: (line) => output.push(line)
     });
 
-    expect(result.appliedCount).toBe(1);
+    expect(result.appliedCount).toBe(3);
     expect(JSON.parse(output[0] ?? "{}")).toEqual({
       event: "database.migrations.completed",
-      appliedCount: 1
+      appliedCount: 3
     });
   });
 
@@ -153,17 +119,16 @@ describe("operational flow", () => {
     const app = await startProcess({
       env,
       connectWhatsapp: false,
-      listen: false,
       installSignalHandlers: false
     });
 
-    expect(app.getHttpServer()).toBeDefined();
+    expect(app.get(RUN_BIRTHDAY_REMINDER_USE_CASE)).toBeDefined();
     await app.close();
   });
 });
 
 async function createTestContext(
-  whatsappClient: WhatsAppClient | FakeGroupClient
+  whatsappClient: WhatsAppGroupMessenger
 ): Promise<INestApplicationContext> {
   const previousEnv = applyEnv(env);
   try {
@@ -212,37 +177,39 @@ function restoreEnv(previous: Map<string, string | undefined>): void {
   }
 }
 
-class FakeMessageGenerator implements MessageGenerator {
-  async generate(input: { person: Person }) {
+class FakeMessageGenerator implements BirthdayMessageGenerator {
+  async generate(input: BirthdayMessageInput) {
     return {
       message: `Parabens, ${input.person.name}!`,
       provider: "fallback" as const,
       model: null,
-      fallbackReason: null,
-      fallbackDetails: null
+      fallbackReason: null
     };
   }
 }
 
-class FakeWhatsAppClient implements WhatsAppClient {
-  readonly sentMessages: Array<{ groupId: string; text: string }> = [];
-  private readonly readyHandlers: Array<() => Promise<void>> = [];
+class FakeWhatsAppClient implements WhatsAppGroupMessenger {
+  readonly sentMessages: Array<{ groupJid: string; text: string }> = [];
   connected = false;
 
   async connect(): Promise<void> {
     this.connected = true;
   }
 
-  async sendGroupMessage(groupIdValue: string, text: string): Promise<SendResult> {
-    this.sentMessages.push({ groupId: groupIdValue, text });
+  async sendGroupMessage(groupJidValue: string, text: string) {
+    this.sentMessages.push({ groupJid: groupJidValue, text });
     return {
       providerMessageId: `provider-${this.sentMessages.length}`,
       sentAt: now
     };
   }
 
-  onReady(handler: () => Promise<void>): void {
-    this.readyHandlers.push(handler);
+  async listGroups(): Promise<WhatsAppGroup[]> {
+    return [];
+  }
+
+  async close(): Promise<void> {
+    return undefined;
   }
 }
 

@@ -5,42 +5,20 @@
 1. Instale dependencias com `npm install`.
 2. Crie `.env` a partir de `.env.example`.
 3. Execute `npm run db:migrate`.
-4. Execute `npm run whatsapp:list-groups` e leia o QR Code no WhatsApp em dispositivos vinculados.
-5. Vincule um grupo com `npm run targets:add -- birthdays.daily <groupJid>`.
+4. Execute `npm run whatsapp:list-groups`, leia o QR Code e copie o JID do grupo desejado.
+5. Configure `WHATSAPP_GROUP_ID` com esse JID.
 6. Execute `npm run birthdays:check-today` para validar o fluxo sem esperar o agendamento.
-7. Execute `npm run dev` para manter o servico NestJS em processo continuo.
+7. Execute `npm run dev` para manter o processo continuo com scheduler.
 
-`WHATSAPP_GROUP_ID` ainda e aceito como compatibilidade: no startup e nos comandos ele popula um target para `birthdays.daily` quando existir.
+O processo registra eventos JSON no console:
 
-O servico registra eventos em JSON estruturado. Logs de `info` confirmam runs, aniversariantes encontrados, envios e reconexoes. Logs de `warn` indicam duplicidades evitadas, fallback de mensagem e estados recuperaveis. Logs de `error` indicam falhas de provedor, banco ou fluxo operacional.
+- `info`: inicio/fim do check, quantidade encontrada e envios concluidos.
+- `warn`: duplicidade ignorada ou fallback recuperavel.
+- `error`: erro fatal de inicializacao, banco, conexao WhatsApp ou envio.
 
 ## Arquitetura operacional
 
-Os comandos e o scheduler entram pela camada `presentation` e chamam portas driver de
-`application`. Banco, WhatsApp, OpenAI, logger, metricas e health checks sao adapters em
-`infrastructure`. Ao alterar operacao, mantenha regras de negocio fora de controllers, CLIs e
-modulos Nest.
-
-## HTTP operacional
-
-O NestJS expoe endpoints no host e porta configurados por `HTTP_HOST` e `HTTP_PORT`.
-
-- `GET /health/live`: processo vivo.
-- `GET /health/ready`: readiness basico de banco e WhatsApp aceitavel.
-- `GET /metrics`: metricas Prometheus quando `METRICS_ENABLED=true`.
-
-## Metricas
-
-Metricas disponiveis:
-
-- `automation_runs_total{automation,status}`
-- `message_deliveries_total{automation,status}`
-- `message_delivery_duplicates_total{automation}`
-- `birthday_people_matched_total`
-- `message_generation_fallbacks_total{automation,reason}`
-- `whatsapp_connection_state`
-
-Valores de `whatsapp_connection_state`: `1` pronto, `0.5` conectando, `0` fechado/ocioso e `-1` deslogado.
+Nao existe servidor HTTP operacional. NestJS e usado como application context para DI, lifecycle, scheduler e CLIs. O scheduler e as CLIs chamam `RunBirthdayReminderUseCase`; TypeORM, Baileys e OpenAI ficam em `infrastructure`.
 
 ## Deploy em Oracle Cloud Always Free
 
@@ -52,7 +30,7 @@ Valores de `whatsapp_connection_state`: `1` pronto, `0.5` conectando, `0` fechad
 6. Leia o QR Code nos logs do container na primeira conexao:
 
 ```bash
-docker compose logs -f whatsapp-automation-bot
+docker compose logs -f birthday-whatsapp-bot
 ```
 
 O `docker-compose.yml` usa volumes nomeados para `/app/data` e `/app/sessions`. Esses volumes preservam o SQLite e a sessao Baileys entre recriacoes do container.
@@ -62,25 +40,23 @@ Para atualizar:
 ```bash
 git pull
 docker compose up -d --build
-docker compose logs -f whatsapp-automation-bot
+docker compose logs -f birthday-whatsapp-bot
 ```
 
 Para rodar migracoes manualmente no container:
 
 ```bash
-docker compose run --rm whatsapp-automation-bot npm run db:migrate
+docker compose run --rm birthday-whatsapp-bot npm run db:migrate
 ```
 
 Para executar uma verificacao manual:
 
 ```bash
-docker compose run --rm whatsapp-automation-bot npm run birthdays:check-today
+docker compose run --rm birthday-whatsapp-bot npm run birthdays:check-today
 ```
 
 Para listar grupos:
 
 ```bash
-docker compose run --rm whatsapp-automation-bot npm run whatsapp:list-groups
+docker compose run --rm birthday-whatsapp-bot npm run whatsapp:list-groups
 ```
-
-Se expuser HTTP fora da VM, use firewall/reverse proxy restrito. Os endpoints operacionais nao devem ficar publicos sem controle de acesso.
